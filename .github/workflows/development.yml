@@ -1,1 +1,150 @@
-IyBidWlsZCB2aWEgR2l0SHViIEFjdGlvbnMgKGZvcmsgb2YgaGVyYnJpbmU4NDAzL0FtZXRoeXN0LWlPUy1NeVJlbWFzdGVyZWQpCm5hbWU6IERldmVsb3BtZW50IGJ1aWxkCgpvbjoKICBwdWxsX3JlcXVlc3Q6CiAgICBicmFuY2hlcy1pZ25vcmU6CiAgICAgIC0gJ2wxMG5fbWFpbicKICAgIHR5cGVzOiBbb3BlbmVkLCByZW9wZW5lZCwgc3luY2hyb25pemVdCiAgcHVzaDoKICAgIGJyYW5jaGVzLWlnbm9yZToKICAgICAgLSAnbDEwbl9tYWluJwogIHdvcmtmbG93X2Rpc3BhdGNoOgoKIyDlubblj5HmjqfliLbvvJrlkIzkuIDliIbmlK8vUFIg5paw55qE5o6o6YCB5Lya5Y+W5raI5LuN5Zyo5o6S6Zif5oiW6L+Q6KGM55qE5pen5p6E5bu644CCCiMg6L+Z6IO95pi+6JGX57yT6KejIG1hY29zLTE0IHJ1bm5lciDkvpvlupTntKflvKDlr7zoh7TnmoQi5LiA55u05Y2h5Zyo6Zif5YiX5LitIumXrumimO+8mgojIOW8gOWPkeS4remikee5gSBwdXNoIOaXtu+8jOaXp+aehOW7uuiiq+eri+WNs+WPlua2iO+8jHJ1bm5lciDotYTmupDorqnnu5nmnIDmlrDmj5DkuqTjgIIKIyB3b3JrZmxvd19kaXNwYXRjaCDmiYvliqjop6blj5HkuZ/nurPlhaXlkIzkuIDnu4TvvIzpgb/lhY3kuI7oh6rliqjop6blj5HkupLnm7jloIbnp6/jgIIKY29uY3VycmVuY3k6CiAgZ3JvdXA6IGRldi1idWlsZC0ke3sgZ2l0aHViLnJlZiB9fQogIGNhbmNlbC1pbi1wcm9ncmVzczogdHJ1ZQoKam9iczoKICBidWlsZDoKICAgIG5hbWU6IERldmVsb3BtZW50IGJ1aWxkCiAgICBzdHJhdGVneToKICAgICAgbWF0cml4OgogICAgICAgIGluY2x1ZGU6CiAgICAgICAgICAtIHBsYXRmb3JtOiAyCiAgICAgICAgICAgIHBsYXRmb3JtX25hbWU6IGlvcwoKICAgIHJ1bnMtb246IG1hY29zLTE0CgogICAgc3RlcHM6CiAgICAgIC0gbmFtZTogU2VsZWN0IFhjb2RlIDE1LjQKICAgICAgICBydW46IHwKICAgICAgICAgIHN1ZG8geGNvZGUtc2VsZWN0IC1zIC9BcHBsaWNhdGlvbnMvWGNvZGVfMTUuNC5hcHAvQ29udGVudHMvRGV2ZWxvcGVyCiAgICAgICAgICB4Y29kZWJ1aWxkIC12ZXJzaW9uIHx8IHRydWUKCiAgICAgIC0gbmFtZTogSW5zdGFsbCBHTlUgTWFrZQogICAgICAgIHJ1bjogfAogICAgICAgICAgYnJldyB1cGRhdGUKICAgICAgICAgIGJyZXcgaW5zdGFsbCBtYWtlCgogICAgICAtIG5hbWU6IEluc3RhbGwgSmF2YSA4IChUZW11cmluKSB2aWEgSG9tZWJyZXcKICAgICAgICBydW46IHwKICAgICAgICAgIGJyZXcgaW5zdGFsbCAtLWNhc2sgdGVtdXJpbkA4IHx8IHRydWUKCiAgICAgIC0gbmFtZTogSW5zdGFsbCBsZGlkCiAgICAgICAgcnVuOiB8CiAgICAgICAgICBicmV3IGluc3RhbGwgbGRpZCB8fCB0cnVlCgogICAgICAtIG5hbWU6IFJlbW92ZSB3b3JrIGZvbGRlcnMKICAgICAgICBydW46IHwKICAgICAgICAgIGVjaG8gImJlZm9yZSIKICAgICAgICAgIGxzIC1sYWggLi8KICAgICAgICAgIHJtIC1yZiAuLyogfHwgdHJ1ZQogICAgICAgICAgcm0gLXJmIC4vLj8/KiB8fCB0cnVlCiAgICAgICAgICBlY2hvICJhZnRlciIKICAgICAgICAgIGxzIC1sYWggLi8KCiAgICAgIC0gbmFtZTogQ2hlY2tvdXQgcmVwb3NpdG9yeQogICAgICAgIHVzZXM6IGFjdGlvbnMvY2hlY2tvdXRAdjQKCiAgICAgICMgW2ZpeF0g5LiK5ri455qEICJSZW1vdmUgc3RhbGUgTW9iaWxlR0wgZ2l0bGluayIg5Zyo5pysIGZvcmsg5LiK5Lya6K6pIE1vYmlsZUdsdWVzIOWGheWuueS4ouWksSwKICAgICAgIyDlr7zoh7QgZGVwX21nIOeahCBDTWFrZSDmiqUgIk1vYmlsZUdsdWVzLWNwcCBkb2VzIG5vdCBleGlzdCLjgILov5nph4zkuI3liKAs55u05o6l6Lez6L+H44CCCiAgICAgIC0gbmFtZTogQ2hlY2tvdXQgcmVwb3NpdG9yeSBzdWJtb2R1bGVzCiAgICAgICAgZW52OgogICAgICAgICAgIyBNb2JpbGVHTCDkuIrmuLggTEZTIOmFjemineW3sueUqOWwve+8jOWFtiBMRlMg5paH5Lu277yIdG9vbHMvdHJhY2VfcmVwbGF5L2ZpeHR1cmVz77yJCiAgICAgICAgICAjIOS4jiBpT1Mg5p6E5bu65peg5YWz77yM6Lez6L+HIHNtdWRnZSDpgb/lhY0gc3VibW9kdWxlIGNoZWNrb3V0IOWksei0pSBleGl0IDEyOAogICAgICAgICAgR0lUX0xGU19TS0lQX1NNVURHRTogIjEiCiAgICAgICAgcnVuOiBnaXQgc3VibW9kdWxlIHVwZGF0ZSAtLWluaXQgLS1yZWN1cnNpdmUKCiAgICAgICMgPT09PSBbc3BlZWRdIOS+nei1lue8k+WtmCAvIGNjYWNoZSjnlLEgeWl5ZXNoaTAtaGFzaCDmt7vliqAs5o+Q6YCfIENJKT09PT0KICAgICAgLSBuYW1lOiBDYWNoZSBoZWF2eSAzcmQtcGFydHkgYnVpbGRzIChNb2JpbGVHbHVlcyAvIGdsc2xhbmcgLyBTUElSVi1Dcm9zcyAvIExUVyAvIFNGUEVXKQogICAgICAgIHVzZXM6IGFjdGlvbnMvY2FjaGVAdjQKICAgICAgICB3aXRoOgogICAgICAgICAgcGF0aDogfAogICAgICAgICAgICBOYXRpdmVzL2J1aWxkL21vYmlsZWdsdWVzCiAgICAgICAgICAgIE5hdGl2ZXMvYnVpbGQvbW9iaWxlZ2x1ZXMvM3JkcGFydHkKICAgICAgICAgICAgTmF0aXZlcy9idWlsZC9zZnBldwogICAgICAgICAgICBOYXRpdmVzL2V4dGVybmFsL0xUVy9sdHcvc3JjL21haW4vdGlueXdyYXBwZXIKICAgICAgICAgIGtleTogZGVwM3JkLSR7eyBydW5uZXIub3MgfX0teGNvZGUxNS40LXNkazE3LjUtJHt7IGhhc2hGaWxlcygnTWFrZWZpbGUnKSB9fQogICAgICAgICAgcmVzdG9yZS1rZXlzOiB8CiAgICAgICAgICAgIGRlcDNyZC0ke3sgcnVubmVyLm9zIH19LQoKICAgICAgLSBuYW1lOiBDYWNoZSBKUkUgYW5kIGdhbWUgYXNzZXRzIGRvd25sb2FkcwogICAgICAgIHVzZXM6IGFjdGlvbnMvY2FjaGVAdjQKICAgICAgICB3aXRoOgogICAgICAgICAgcGF0aDogfAogICAgICAgICAgICBOYXRpdmVzL2J1aWxkL2phdmFfcnVudGltZXMKICAgICAgICAgICAgTmF0aXZlcy9idWlsZC9hc3NldHMKICAgICAgICAgICAgfi9MaWJyYXJ5L0NhY2hlcy9BbWV0aHlzdAogICAgICAgICAga2V5OiBqcmUtYXNzZXRzLSR7eyBydW5uZXIub3MgfX0teGNvZGUxNS40LXNkazE3LjUtJHt7IGhhc2hGaWxlcygnTWFrZWZpbGUnKSB9fQogICAgICAgICAgcmVzdG9yZS1rZXlzOiB8CiAgICAgICAgICAgIGpyZS1hc3NldHMtJHt7IHJ1bm5lci5vcyB9fS0KCiAgICAgICMgPT09PSBbY2FjaGUtcHJvb2ZdIOe8k+WtmOWRveS4reivgeaNrijmr4/mrKHmiZPljbApPT09PQogICAgICAtIG5hbWU6IENhY2hlIGV2aWRlbmNlCiAgICAgICAgcnVuOiB8CiAgICAgICAgICBlY2hvICI9PT09IGNhY2hlIHN0YXRlID09PT0iCiAgICAgICAgICBmb3IgZCBpbiBOYXRpdmVzL2J1aWxkL21vYmlsZWdsdWVzIE5hdGl2ZXMvYnVpbGQvc2ZwZXcgTmF0aXZlcy9idWlsZC9qYXZhX3J1bnRpbWVzIE5hdGl2ZXMvYnVpbGQvYXNzZXRzOyBkbwogICAgICAgICAgICBpZiBbIC1kICIkZCIgXTsgdGhlbgogICAgICAgICAgICAgIGVjaG8gIkhJVCAgJGQgOiAkKGZpbmQgIiRkIiAtdHlwZSBmIDI+L2Rldi9udWxsIHwgd2MgLWwpIGZpbGVzLCAkKGR1IC1zaCAiJGQiIDI+L2Rldi9udWxsIHwgY3V0IC1mMSkiCiAgICAgICAgICAgICAgZWNobyAiICAgICBuZXdlc3Q6ICQoZmluZCAiJGQiIC10eXBlIGYgLW5ld2VybXQgJy0xMCBtaW51dGVzJyAyPi9kZXYvbnVsbCB8IHdjIC1sKSBmaWxlcyB0b3VjaGVkIGluIGxhc3QgMTBtaW4iCiAgICAgICAgICAgIGVsc2UKICAgICAgICAgICAgICBlY2hvICJNSVNTICRkIChhYnNlbnQpIgogICAgICAgICAgICBmaQogICAgICAgICAgZG9uZQogICAgICAgICAgZWNobyAiPT09PT09PT09PT09PT09PT09PT09IgogICAgICAtIG5hbWU6IEJ1aWxkIGZvciAke3sgbWF0cml4LnBsYXRmb3JtX25hbWUgfX0KICAgICAgICBlbnY6CiAgICAgICAgICBJUEhPTkVPU19ERVBMT1lNRU5UX1RBUkdFVDogMTQuMAogICAgICAgICAgQ09ORklHX0NVUlNFRk9SR0VfQVBJX0tFWTogJHt7IHNlY3JldHMuQ09ORklHX0NVUlNFRk9SR0VfQVBJX0tFWSB9fQogICAgICAgIHJ1bjogfAogICAgICAgICAgc2V0IC1vIHBpcGVmYWlsCiAgICAgICAgICBleHBvcnQgUEFUSD0vb3B0L2hvbWVicmV3L2JpbjokUEFUSAogICAgICAgICAgZXhwb3J0IFNMSU1NRUQ9MAoKICAgICAgICAgIGlmIFsgIiR7eyBtYXRyaXgucGxhdGZvcm1fbmFtZSB9fSIgPT0gImlvcyIgXTsgdGhlbgogICAgICAgICAgICBnbWFrZSAtaiQoc3lzY3RsIC1uIGh3Lm5jcHUpIGRzeW0gcGFja2FnZSBQTEFURk9STT0ke3sgbWF0cml4LnBsYXRmb3JtIH19CgogICAgICAgICAgICBnbWFrZSAtaiQoc3lzY3RsIC1uIGh3Lm5jcHUpIGRzeW0gcGFja2FnZSBQTEFURk9STT0ke3sgbWF0cml4LnBsYXRmb3JtIH19IFRST0xMU1RPUkVfSklUX0VOVD0xCgogICAgICAgICAgZWxpZiBbICIke3sgbWF0cml4LnBsYXRmb3JtX25hbWUgfX0iID09ICJ0dm9zIiBdOyB0aGVuCiAgICAgICAgICAgIGdtYWtlIC1qJChzeXNjdGwgLW4gaHcubmNwdSkgZHN5bSBwYWNrYWdlIFBMQVRGT1JNPSR7eyBtYXRyaXgucGxhdGZvcm0gfX0gVFJPTExTVE9SRV9KSVRfRU5UPTEKCiAgICAgICAgICBlbHNlCiAgICAgICAgICAgIGdtYWtlIC1qJChzeXNjdGwgLW4gaHcubmNwdSkgZHN5bSBwYWNrYWdlIFBMQVRGT1JNPSR7eyBtYXRyaXgucGxhdGZvcm0gfX0KICAgICAgICAgIGZpCgogICAgICAtIG5hbWU6IFVwbG9hZCByZWd1bGFyIGlwYQogICAgICAgIHVzZXM6IGFjdGlvbnMvdXBsb2FkLWFydGlmYWN0QHY0CiAgICAgICAgaWY6IHN1Y2Nlc3MoKQogICAgICAgIHdpdGg6CiAgICAgICAgICBuYW1lOiBjb20uYWlyLWRldnMuYWlyLSR7eyBtYXRyaXgucGxhdGZvcm1fbmFtZSB9fS5pcGEKICAgICAgICAgIHBhdGg6IGFydGlmYWN0cy9jb20uYWlyLWRldnMuYWlyLSotJHt7IG1hdHJpeC5wbGF0Zm9ybV9uYW1lIH19LmlwYQoKICAgICAgLSBuYW1lOiBVcGxvYWQgcmVndWxhciB0aXBhCiAgICAgICAgdXNlczogYWN0aW9ucy91cGxvYWQtYXJ0aWZhY3RAdjQKICAgICAgICBpZjogc3VjY2VzcygpCiAgICAgICAgd2l0aDoKICAgICAgICAgIG5hbWU6IGNvbS5haXItZGV2cy5haXItJHt7IG1hdHJpeC5wbGF0Zm9ybV9uYW1lIH19LXRyb2xsc3RvcmUudGlwYQogICAgICAgICAgcGF0aDogYXJ0aWZhY3RzL2NvbS5haXItZGV2cy5haXItKi0ke3sgbWF0cml4LnBsYXRmb3JtX25hbWUgfX0tdHJvbGxzdG9yZS50aXBhCgogICAgICAtIG5hbWU6IFVwbG9hZCBQb2phdkxhdW5jaGVyLmRTWU0KICAgICAgICBpZjogbWF0cml4LnBsYXRmb3JtX25hbWUgPT0gJ2lvcycgJiYgc3VjY2VzcygpCiAgICAgICAgdXNlczogYWN0aW9ucy91cGxvYWQtYXJ0aWZhY3RAdjQKICAgICAgICB3aXRoOgogICAgICAgICAgbmFtZTogQW5nZWxBdXJhQW1ldGh5c3QuZFNZTQogICAgICAgICAgcGF0aDogYXJ0aWZhY3RzL0FuZ2VsQXVyYUFtZXRoeXN0LmRTWU0K
+# build via GitHub Actions (fork of herbrine8403/Amethyst-iOS-MyRemastered)
+name: Development build
+
+on:
+  pull_request:
+    branches-ignore:
+      - 'l10n_main'
+    types: [opened, reopened, synchronize]
+  push:
+    branches-ignore:
+      - 'l10n_main'
+  workflow_dispatch:
+
+# 并发控制：同一分支/PR 新的推送会取消仍在排队或运行的旧构建。
+# 这能显著缓解 macos-14 runner 供应紧张导致的"一直卡在队列中"问题：
+# 开发中频繁 push 时，旧构建被立即取消，runner 资源让给最新提交。
+# workflow_dispatch 手动触发也纳入同一组，避免与自动触发互相堆积。
+concurrency:
+  group: dev-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Development build
+    strategy:
+      matrix:
+        include:
+          - platform: 2
+            platform_name: ios
+
+    runs-on: macos-14
+
+    steps:
+      - name: Select Xcode 15.4
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version || true
+
+      - name: Install GNU Make
+        run: |
+          brew update
+          brew install make
+
+      - name: Install Java 8 (Temurin) via Homebrew
+        run: |
+          brew install --cask temurin@8 || true
+
+      - name: Install ldid
+        run: |
+          brew install ldid || true
+
+      - name: Remove work folders
+        run: |
+          echo "before"
+          ls -lah ./
+          rm -rf ./* || true
+          rm -rf ./.??* || true
+          echo "after"
+          ls -lah ./
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # [fix] 上游的 "Remove stale MobileGL gitlink" 在本 fork 上会让 MobileGlues 内容丢失,
+      # 导致 dep_mg 的 CMake 报 "MobileGlues-cpp does not exist"。这里不删,直接跳过。
+      - name: Checkout repository submodules
+        env:
+          # MobileGL 上游 LFS 配额已用尽，其 LFS 文件（tools/trace_replay/fixtures）
+          # 与 iOS 构建无关，跳过 smudge 避免 submodule checkout 失败 exit 128
+          GIT_LFS_SKIP_SMUDGE: "1"
+        run: git submodule update --init --recursive
+
+      # ==== [speed] 依赖缓存 / ccache(由 yiyeshi0-hash 添加,提速 CI)====
+      - name: Cache heavy 3rd-party builds (MobileGlues / glslang / SPIRV-Cross / LTW / SFPEW)
+        uses: actions/cache@v4
+        with:
+          path: |
+            Natives/build/mobileglues
+            Natives/build/mobileglues/3rdparty
+            Natives/build/sfpew
+            Natives/external/LTW/ltw/src/main/tinywrapper
+          key: dep3rd-${{ runner.os }}-xcode15.4-sdk17.5-${{ hashFiles('Makefile') }}
+          restore-keys: |
+            dep3rd-${{ runner.os }}-
+
+      - name: Cache JRE and game assets downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            Natives/build/java_runtimes
+            Natives/build/assets
+            ~/Library/Caches/Amethyst
+          key: jre-assets-${{ runner.os }}-xcode15.4-sdk17.5-${{ hashFiles('Makefile') }}
+          restore-keys: |
+            jre-assets-${{ runner.os }}-
+
+      # ==== [cache-proof] 缓存命中证据(每次打印)====
+      - name: Cache evidence
+        run: |
+          echo "==== cache state ===="
+          for d in Natives/build/mobileglues Natives/build/sfpew Natives/build/java_runtimes Natives/build/assets; do
+            if [ -d "$d" ]; then
+              echo "HIT  $d : $(find "$d" -type f 2>/dev/null | wc -l) files, $(du -sh "$d" 2>/dev/null | cut -f1)"
+              echo "     newest: $(find "$d" -type f -newermt '-10 minutes' 2>/dev/null | wc -l) files touched in last 10min"
+            else
+              echo "MISS $d (absent)"
+            fi
+          done
+          echo "====================="
+      - name: Build for ${{ matrix.platform_name }}
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: 14.0
+          CONFIG_CURSEFORGE_API_KEY: ${{ secrets.CONFIG_CURSEFORGE_API_KEY }}
+        run: |
+          set -o pipefail
+          export PATH=/opt/homebrew/bin:$PATH
+          export SLIMMED=0
+
+          if [ "${{ matrix.platform_name }}" == "ios" ]; then
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }}
+
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1
+
+          elif [ "${{ matrix.platform_name }}" == "tvos" ]; then
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1
+
+          else
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }}
+          fi
+
+      - name: Upload regular ipa
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: com.air-devs.air-${{ matrix.platform_name }}.ipa
+          path: artifacts/com.air-devs.air-*-${{ matrix.platform_name }}.ipa
+
+      - name: Upload regular tipa
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: com.air-devs.air-${{ matrix.platform_name }}-trollstore.tipa
+          path: artifacts/com.air-devs.air-*-${{ matrix.platform_name }}-trollstore.tipa
+
+      - name: Upload PojavLauncher.dSYM
+        if: matrix.platform_name == 'ios' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AngelAuraAmethyst.dSYM
+          path: artifacts/AngelAuraAmethyst.dSYM
