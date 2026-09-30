@@ -344,10 +344,19 @@ static void ame_glProbeRunOnce(void) {
     for (int i = 0; kNames[i] != NULL; ++i) {
         const char *name = kNames[i];
         void *h = dlsym(RTLD_DEFAULT, name);          // 全局(渲染器 RTLD_GLOBAL 时可见)
-        void *r = ame_rendererHandle() ? dlsym(ame_rendererHandle(), name) : NULL;  // 渲染器自身
+        void *r = dlsym(dlopen(NULL, RTLD_LAZY), name);   // 进程内全局(含已 RTLD_GLOBAL 载入的渲染器)
         NSLog(@"[glprobe] %-32s global=%s renderer=%s",
               name, h ? "YES" : "no", r ? "YES" : "no");
     }
     NSLog(@"[glprobe] done");
 }
 
+// [glprobe] 启动后自动跑一次(__attribute__((constructor)) 在 .m 里合法)
+__attribute__((constructor))
+static void ame_glProbeCtor(void) {
+    // 稍等片刻,让渲染器完成载入;探测是只读的,时机不影响结论
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(12 * NSEC_PER_SEC)),
+                   dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        ame_glProbeRunOnce();
+    });
+}
