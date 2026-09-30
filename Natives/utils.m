@@ -308,3 +308,46 @@ BOOL DeviceNeedsDebugJITMapping(void) {
 void dismissModalViewController(UIViewController *viewController) {
     [viewController.navigationController dismissViewControllerAnimated:YES completion:nil];
 }
+
+#pragma mark - [glprobe] Metal/Metallum GL 能力探测(只读,不改行为)
+
+// 目的:一次性判定 Iris「必需项」里那几项 GL 能力,在本机渲染器上到底有没有实现。
+// 做法:对每个候选入口做 dlsym(渲染器句柄, name);返回非空 = 有实现。
+// 输出:一条 [glprobe] 日志,列出每个名字的 resolved 状态。
+// 安全:纯查询,不改任何渲染状态;失败也只是打日志。
+//
+// 依据(拆 libmetallum.dylib 的符号):MTLBuffer/MTLTexture/MTLSamplerState 齐(底层有),
+// 但 glBufferStorage / glBindImageTexture / glGenSamplers 等 GL 入口字面全无 =>
+// 需要确认这些 GL 入口是"由渲染器提供"还是"压根没有"。
+static void ame_glProbeRunOnce(void) {
+    static int done = 0;
+    if (done) return;
+    done = 1;
+
+    static const char *kNames[] = {
+        // --- SSBO / storage buffer ---
+        "glBufferStorage", "glNamedBufferStorage", "glBindBufferBase", "glBindBufferRange",
+        "glShaderStorageBlockBinding", "glGetProgramResourceIndex",
+        // --- custom images / 图像单位 ---
+        "glBindImageTexture", "glTexStorage2D", "glTexStorage3D",
+        // --- separate hardware samplers ---
+        "glGenSamplers", "glBindSampler", "glSamplerParameteri", "glDeleteSamplers",
+        // --- compute ---
+        "glDispatchCompute", "glDispatchComputeIndirect", "glMemoryBarrier",
+        // --- tessellation(仅探测,GLES 上通常没有)---
+        "glPatchParameteri",
+        // --- 光影常用的状态/缓冲入口 ---
+        "glVertexAttribDivisor", "glDrawBuffers", "glDrawElementsInstanced",
+        "glMapBufferRange", "glFenceSync", "glClientWaitSync",
+        NULL
+    };
+    for (int i = 0; kNames[i] != NULL; ++i) {
+        const char *name = kNames[i];
+        void *h = dlsym(RTLD_DEFAULT, name);          // 全局(渲染器 RTLD_GLOBAL 时可见)
+        void *r = ame_rendererHandle() ? dlsym(ame_rendererHandle(), name) : NULL;  // 渲染器自身
+        NSLog(@"[glprobe] %-32s global=%s renderer=%s",
+              name, h ? "YES" : "no", r ? "YES" : "no");
+    }
+    NSLog(@"[glprobe] done");
+}
+
