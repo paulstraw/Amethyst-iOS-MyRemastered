@@ -1,3 +1,4 @@
+# build via GitHub Actions (fork of herbrine8403/Amethyst-iOS-MyRemastered)
 name: Development build
 
 on:
@@ -92,20 +93,6 @@ jobs:
           key: jre-assets-${{ runner.os }}-${{ hashFiles('Makefile') }}
           restore-keys: |
             jre-assets-${{ runner.os }}-
-
-      - name: Install ccache
-        run: |
-          brew install ccache || true
-          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-          echo "PATH=/usr/local/opt/ccache/libexec:$PATH" >> $GITHUB_ENV
-
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ccache-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ runner.os }}-
 
       - name: Build for ${{ matrix.platform_name }}
         env:
