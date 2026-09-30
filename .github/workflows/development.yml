@@ -79,6 +79,44 @@ jobs:
           GIT_LFS_SKIP_SMUDGE: "1"
         run: git submodule update --init --recursive
 
+      # ==== [speed] 依赖缓存 / ccache(由 yiyeshi0-hash 添加,提速 CI)====
+      - name: Cache heavy 3rd-party builds (MobileGlues / glslang / SPIRV-Cross / LTW / SFPEW)
+        uses: actions/cache@v4
+        with:
+          path: |
+            Natives/build/mobileglues
+            Natives/build/mobileglues/3rdparty
+            Natives/build/sfpew
+            Natives/external/LTW/ltw/src/main/tinywrapper
+          key: dep3rd-${{ runner.os }}-${{ hashFiles('Makefile') }}
+          restore-keys: |
+            dep3rd-${{ runner.os }}-
+
+      - name: Cache JRE and game assets downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            Natives/build/java_runtimes
+            Natives/build/assets
+            ~/Library/Caches/Amethyst
+          key: jre-assets-${{ runner.os }}-${{ hashFiles('Makefile') }}
+          restore-keys: |
+            jre-assets-${{ runner.os }}-
+
+      - name: Install ccache
+        run: |
+          brew install ccache || true
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "PATH=/usr/local/opt/ccache/libexec:$PATH" >> $GITHUB_ENV
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
       - name: Build for ${{ matrix.platform_name }}
         env:
           IPHONEOS_DEPLOYMENT_TARGET: 14.0
