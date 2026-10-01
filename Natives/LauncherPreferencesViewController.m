@@ -1824,9 +1824,36 @@
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     if (section == 0) { // Add to general section
-        NSString *versionString = [NSString stringWithFormat:@"Amethyst iOS Remastered %@\n%@ on %@ (%s)\nPID: %d",
+        // ★ 自证标记(新增):这一行让"我到底装的哪个包"一眼可辨,并且直接给出
+        //   三个关键事实,免得靠肉眼猜:
+        //     SDK      = 编译期最大 SDK(__IPHONE_OS_VERSION_MAX_ALLOWED)。260000 = iOS 26 SDK。
+        //                (系统液态玻璃要求用 iOS 26+ SDK 构建。)
+        //     Glass    = 运行时能否拿到 UIGlassEffect(26+ 才有)。yes ⇒ 真玻璃路径可用。
+        //     Portrait = 本 App 是否允许竖屏(读窗口的 supportedInterfaceOrientations)。
+        NSInteger maxSDK = (NSInteger)__IPHONE_OS_VERSION_MAX_ALLOWED;
+        BOOL glassClass = (NSClassFromString(@"UIGlassEffect") != Nil);
+        UIInterfaceOrientationMask mask = UIInterfaceOrientationMaskPortrait;
+        for (UIScene *sc in UIApplication.sharedApplication.connectedScenes) {
+            if ([sc isKindOfClass:[UIWindowScene class]]) {
+                mask = [(UIWindowScene *)sc interfaceOrientation] ? mask : mask;   // 占位,下面用 VC 判定
+                break;
+            }
+        }
+        UIViewController *rootVC = self.view.window.rootViewController;
+        BOOL portraitOK = YES;
+        if (rootVC && [rootVC respondsToSelector:@selector(supportedInterfaceOrientations)]) {
+            portraitOK = ((rootVC.supportedInterfaceOrientations & UIInterfaceOrientationMaskPortrait) != 0)
+                      || ((rootVC.supportedInterfaceOrientations & UIInterfaceOrientationMaskPortraitUpsideDown) != 0);
+        }
+        NSString *mark = [NSString stringWithFormat:@"\n★ UI26 自证:SDK=%ld %@ · Glass=%@ · Portrait=%@",
+                          (long)maxSDK,
+                          (maxSDK >= 260000 ? @"(iOS26✓)" : @"(旧SDK✗)"),
+                          (glassClass ? @"yes✓" : @"no✗"),
+                          (portraitOK ? @"yes✓" : @"no✗")];
+
+        NSString *versionString = [NSString stringWithFormat:@"Amethyst iOS Remastered %@\n%@ on %@ (%s)\nPID: %d%@",
             NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"],
-            UIDevice.currentDevice.completeOSVersion, [HostManager GetModelName], getenv("POJAV_DETECTEDINST"), getpid()];
+            UIDevice.currentDevice.completeOSVersion, [HostManager GetModelName], getenv("POJAV_DETECTEDINST"), getpid(), mark];
         
         // Style footer for background if needed
         if ([[BackgroundManager sharedManager] hasBackground]) {
