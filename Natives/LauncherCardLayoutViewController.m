@@ -1,5 +1,6 @@
 #import "LauncherCardLayoutViewController.h"
 #import "LauncherMenuViewController.h"
+#import "UIViewController+AMEPanel.h"   // ★ 子面板原生基底样式(移植)
 #import "LauncherNewsViewController.h"
 #import "LauncherRightPanelViewController.h"
 #import "DownloadViewController.h"
@@ -817,6 +818,12 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
 #pragma mark - Content Switching
 
 - (void)setContentViewController:(UIViewController *)viewController animated:(BOOL)animated {
+    // ★ 子面板原生基底样式:统一页面底色(systemBackgroundColor)与表格基底
+    //   (清透 + separatorColor),幂等;透明定制面板自动跳过(BackgroundManager 的全局背景不受影响)。
+    //   移植自 Gsjsjzhznsz 的 Air fork(UIViewController+AMEPanel)。原来挂在导航容器 push 上,
+    //   本工程是"内容 VC 替换"架构 ⇒ 改在这里调用。
+    [viewController ame_applySubpanelBaseStyle];
+
     if (!viewController) return;
 
     // 关键修复（UI 累积异常）：同一实例直接跳过，避免对同一 VC 重复添加约束
