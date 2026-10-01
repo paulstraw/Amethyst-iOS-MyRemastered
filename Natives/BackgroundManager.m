@@ -7,6 +7,7 @@
 //
 
 #import "BackgroundManager.h"
+#import "UIKit+GlassSurface.h"   // ★ 液态玻璃材质
 #import <Photos/Photos.h>
 
 static NSString * const kBackgroundTypeKey = @"background_type";
@@ -415,7 +416,7 @@ static const NSInteger kDefaultBackgroundTag = 99995;
     // 且透明度适中，背景图可见。
     UIBlurEffect *blurEffect;
     if (@available(iOS 13.0, *)) {
-        blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial];
+        blurEffect = AmeGlassEffect(UIBlurEffectStyleSystemThinMaterial);   // ★ 液态玻璃(iOS 26+)/ 旧系统回退
     } else {
         blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleLight];
     }
@@ -492,7 +493,7 @@ static const NSInteger kDefaultBackgroundTag = 99995;
     if (self.uiEffect == BackgroundUIEffectBlur) {
         // 毛玻璃效果 - use UIBlurEffect on cell background
         if (@available(iOS 13.0, *)) {
-            UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
+            UIVisualEffect *blur = AmeGlassEffect(UIBlurEffectStyleSystemMaterial);   // ★ 列表行玻璃
             UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blur];
             blurView.frame = cell.bounds;
             blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -571,7 +572,7 @@ static const NSInteger kDefaultBackgroundTag = 99995;
         blurAppearance = [[UINavigationBarAppearance alloc] init];
         [blurAppearance configureWithTransparentBackground];
         blurAppearance.backgroundColor = [UIColor clearColor];
-        blurAppearance.backgroundEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
+        blurAppearance.backgroundEffect = AmeGlassEffect(UIBlurEffectStyleSystemMaterial);   // ★ 导航栏玻璃
         blurAppearance.shadowColor = nil;
         blurAppearance.shadowImage = emptyImage;
         // 半透明 Appearance 在首次调用时按当前 uiOpacity 构建（见下方懒加载）
@@ -650,7 +651,7 @@ static const NSInteger kDefaultBackgroundTag = 99995;
         blurToolbarAppearance = [[UIToolbarAppearance alloc] init];
         [blurToolbarAppearance configureWithTransparentBackground];
         blurToolbarAppearance.backgroundColor = [UIColor clearColor];
-        blurToolbarAppearance.backgroundEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
+        blurToolbarAppearance.backgroundEffect = AmeGlassEffect(UIBlurEffectStyleSystemMaterial);   // ★ 工具栏玻璃
         blurToolbarAppearance.shadowColor = nil;
         blurToolbarAppearance.shadowImage = emptyImage;
     });

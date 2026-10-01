@@ -51,7 +51,10 @@
     self.menuItems = @[
         @{@"icon": @"house.fill", @"title": @" ", @"index": @0},
         @{@"icon": @"arrow.down.circle.fill", @"title": @" ", @"index": @1},
-        @{@"icon": @"sparkles", @"title": @" ", @"index": @2},
+        // ★ AI 入口从侧栏移出(横屏时灵动岛正好压在这一格上 ⇒ 5 格均分的正中)
+        //   这里保留【同尺寸占位】而不是删除:删掉会让 UIStackView(EqualSpacing) 重新均分,
+        //   其余 4 个按钮的位置会整体位移。占位尺寸与按钮一致 ⇒ 几何完全不变,只是不显示。
+        @{@"icon": @"", @"title": @" ", @"index": @2, @"placeholder": @YES},
         @{@"icon": @"puzzlepiece.fill", @"title": @" ", @"index": @3},
         // 暂时移除两个联机图标，恢复时取消下方两行注释并将设置项 index 改回 @6
         // @{@"icon": @"antenna.radiowaves.left.and.right", @"title": @" ", @"index": @4},
@@ -117,6 +120,15 @@
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
     btn.translatesAutoresizingMaskIntoConstraints = NO;
     btn.tag = index;
+
+    // ★ 占位项(原 AI 位置):尺寸与普通按钮一致,但不可见、不可点 ⇒ 保持间距几何不变
+    if ([item[@"placeholder"] boolValue]) {
+        btn.userInteractionEnabled = NO;
+        btn.backgroundColor = [UIColor clearColor];
+        btn.tintColor = [UIColor clearColor];
+        btn.titleLabel.text = @"";
+        return btn;
+    }
 
     // 设置图标
     UIImage *icon = [UIImage systemImageNamed:item[@"icon"]];

@@ -75,6 +75,12 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
 @property(nonatomic, strong) NSLayoutConstraint *rightPanelWidthConstraint;
 // 存储外边距约束，traitCollection 变化时动态更新
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *outerMarginConstraints;
+// ★ [GLASS-SAFE] 贴屏边的那 4 个约束单独持有:只有"有灵动岛/刘海的那一侧"需要补 safeArea 补偿。
+//   其余(卡片之间的间距、宽度)不受安全区影响,保持原样。
+@property(nonatomic, strong) NSLayoutConstraint *edgeLeadingConstraint;    // 侧栏 leading → +insets.left
+@property(nonatomic, strong) NSLayoutConstraint *edgeTrailingConstraint;   // 右栏 trailing → -insets.right
+@property(nonatomic, strong) NSLayoutConstraint *edgeTopConstraint;        // → +insets.top(竖屏时避岛)
+@property(nonatomic, strong) NSLayoutConstraint *edgeBottomConstraint;     // → -max(margin, insets.bottom)
 // 关键修复（UI 累积异常）：同 LauncherRootViewController，持有当前内容 VC 的约束
 // 并先 deactivate 再激活，避免 tmpRootVC 保留场景下缓存复用子 VC 的约束叠加。
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *currentContentConstraints;
@@ -190,6 +196,33 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     [[BackgroundManager sharedManager] pauseVideo];
 }
 
+/// ★ [GLASS-SAFE] 转屏(岛换边)或竖屏进出时,safeAreaInsets 变化 ⇒ 重算屏边补偿。
+/// 这是灵动岛/刘海屏唯一可靠的重排时机:viewDidLayoutSubviews 里 insets 可能还没更新。
+- (void)viewSafeAreaInsetsDidChange {
+    [super viewSafeAreaInsetsDidChange];
+    [self applyEdgeInsets];
+}
+
+/// 只做"屏边补偿"这一件事,便于从 traitCollectionDidChange / viewSafeAreaInsetsDidChange 两处调用。
+- (void)applyEdgeInsets {
+    CGFloat outerMargin = LauncherCardLayoutOuterMargin(self.traitCollection);
+    UIEdgeInsets safe = UIEdgeInsetsZero;
+    if (@available(iOS 11.0, *)) {
+        safe = self.view.safeAreaInsets;
+    }
+    CGFloat mTop    = outerMargin + safe.top;
+    CGFloat mBottom = MAX(outerMargin, safe.bottom + outerMargin * 0.5);
+    self.edgeLeadingConstraint.constant  =  outerMargin + safe.left;
+    self.edgeTrailingConstraint.constant = -(outerMargin + safe.right);
+    self.edgeTopConstraint.constant      =  mTop;
+    self.edgeBottomConstraint.constant   = -mBottom;
+    for (NSLayoutConstraint *c in self.outerMarginConstraints) {
+        if ([c.identifier isEqualToString:@"edge-top"])         { c.constant =  mTop; }
+        else if ([c.identifier isEqualToString:@"edge-bottom"]) { c.constant = -mBottom; }
+    }
+    [self.view setNeedsLayout];
+}
+
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     // card 布局四边外边距一致性由约束保证（用 view.edgeAnchor + kCardOuterMargin，
@@ -236,14 +269,34 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     // 更新外边距约束（iPhone/iPad 切换时 outerMargin 不同）
     CGFloat outerMargin = LauncherCardLayoutOuterMargin(self.traitCollection);
     for (NSLayoutConstraint *c in self.outerMarginConstraints) {
-        // 第一、四、七个约束是 leading/trailing（正外边距），其余是 top/bottom
-        // leading 用正 outerMargin，trailing 用负 outerMargin，top 用正，bottom 用负
-        // 简化处理：根据原 constant 符号决定正负
+        if ([c.identifier isEqualToString:@"edge-top"] || [c.identifier isEqualToString:@"edge-bottom"]) {
+            continue;   // ★ [GLASS-SAFE] 这四条由下面统一按安全区设置
+        }
+        // 其余(卡片之间 / 尺寸)不受屏边安全区影响,按符号取 ±outerMargin
         if (c.constant >= 0) {
             c.constant = outerMargin;
         } else {
             c.constant = -outerMargin;
         }
+    }
+    // ★ [GLASS-SAFE] 屏边补偿:只有"有灵动岛/刘海的那一侧"的 safeArea 不为 0,
+    //   横屏时岛在左则 insets.left≈59pt(右为 0),岛在右则相反 ⇒ 该侧让开,另一侧仍贴边。
+    //   (原实现为求四边留白一致,直接用 view.edgeAnchor 绕过了安全区 ⇒ 岛那一侧被压住。)
+    UIEdgeInsets safe = UIEdgeInsetsZero;
+    if (@available(iOS 11.0, *)) {
+        safe = self.view.safeAreaInsets;
+    }
+    CGFloat mLeft   = outerMargin + safe.left;
+    CGFloat mRight  = outerMargin + safe.right;
+    CGFloat mTop    = outerMargin + safe.top;
+    CGFloat mBottom = MAX(outerMargin, safe.bottom + outerMargin * 0.5);
+    self.edgeLeadingConstraint.constant  =  mLeft;
+    self.edgeTrailingConstraint.constant = -mRight;
+    self.edgeTopConstraint.constant      =  mTop;
+    self.edgeBottomConstraint.constant   = -mBottom;
+    for (NSLayoutConstraint *c in self.outerMarginConstraints) {
+        if ([c.identifier isEqualToString:@"edge-top"])         { c.constant =  mTop; }
+        else if ([c.identifier isEqualToString:@"edge-bottom"]) { c.constant = -mBottom; }
     }
     // 关键修复（阶段4：Card 布局进入设置崩溃，无日志）：
     // 与 LauncherRootViewController 对齐：仅遍历直接子 VC，避免递归栈溢出风险。
@@ -350,6 +403,17 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     self.outerMarginConstraints = @[sidebarLeading, sidebarTop, sidebarBottom,
                                     rightTrailing, rightTop, rightBottom,
                                     contentTop, contentBottom];
+
+    // ★ [GLASS-SAFE] 记下"贴屏边"的 4 个,供安全区补偿使用(sidebarTop/Top 同值,取其一即可)
+    self.edgeLeadingConstraint  = sidebarLeading;
+    self.edgeTrailingConstraint = rightTrailing;
+    self.edgeTopConstraint      = sidebarTop;
+    self.edgeBottomConstraint   = sidebarBottom;
+    // contentCard 的上下与侧栏一致,同步补偿(否则中栏会被岛侧顶出去而错位)
+    contentTop.identifier    = @"edge-top";
+    contentBottom.identifier = @"edge-bottom";
+    sidebarTop.identifier    = @"edge-top";
+    sidebarBottom.identifier = @"edge-bottom";
 
     [NSLayoutConstraint activateConstraints:@[
         // 左侧菜单卡片
