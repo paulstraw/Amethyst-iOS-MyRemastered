@@ -764,7 +764,25 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
 }
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
-    return UIInterfaceOrientationMaskLandscape;
+    // ★ [PORTRAIT] 放开竖屏:原来是写死 Landscape ⇒ 竖屏进不去。
+    // 竖屏排布由 LauncherCardLayoutViewController 切换(三卡竖摞 + 菜单横排);
+    // 游戏(SurfaceViewController)单独锁横屏,保证游戏内不会竖过来。
+    // ★ [PORTRAIT] 游戏页锁横屏:窗口层已放开竖屏(SceneDelegate/AppDelegate),
+    //   若当前内容是游戏(SurfaceViewController,可能在导航栈里),这里必须把它锁回横屏,
+    //   否则游戏内会跟着竖过来。启动器各页则允许竖屏。
+    UIViewController *content = _contentViewController;
+    if ([content isKindOfClass:[UINavigationController class]]) {
+        content = ((UINavigationController *)content).topViewController;
+    }
+    Class gameCls = NSClassFromString(@"SurfaceViewController");
+    if (gameCls != Nil && [content isKindOfClass:gameCls]) {
+        return UIInterfaceOrientationMaskLandscape;
+    }
+
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+        return UIInterfaceOrientationMaskAll;
+    }
+    return UIInterfaceOrientationMaskAllButUpsideDown;
 }
 
 #pragma mark - UINavigationControllerDelegate

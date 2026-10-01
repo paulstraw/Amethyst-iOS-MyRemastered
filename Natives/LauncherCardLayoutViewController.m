@@ -85,6 +85,14 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
 // 并先 deactivate 再激活，避免 tmpRootVC 保留场景下缓存复用子 VC 的约束叠加。
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *currentContentConstraints;
 
+// ★ [PORTRAIT] 竖屏(紧凑高)时的"三卡竖摞"约束集;与横屏约束互斥激活。
+@property(nonatomic, strong) NSArray<NSLayoutConstraint *> *portraitConstraints;
+@property(nonatomic, strong) NSArray<NSLayoutConstraint *> *landscapeConstraints;
+@property(nonatomic, assign) BOOL usingPortraitLayout;
+
+// ★ [PORTRAIT] 菜单页引用(切横/竖排布时要用)
+@property(nonatomic, strong) LauncherMenuViewController *menuViewController;
+
 @property(nonatomic, assign) BOOL isShowingProfileEditor;
 @property(nonatomic, strong) ProfileSettingsViewController *profileEditorVC;
 
@@ -200,7 +208,34 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
 /// 这是灵动岛/刘海屏唯一可靠的重排时机:viewDidLayoutSubviews 里 insets 可能还没更新。
 - (void)viewSafeAreaInsetsDidChange {
     [super viewSafeAreaInsetsDidChange];
+    [self updateLayoutForCurrentOrientation];
     [self applyEdgeInsets];
+}
+
+/// ★ [PORTRAIT] 按当前方向二选一激活约束集。竖屏 = 紧凑高(verticalSizeClass == Regular 且宽 < 高)。
+/// 只在真正需要切换时动约束,避免每次转屏都重建(原工程有"约束累积"的历史教训)。
+- (void)updateLayoutForCurrentOrientation {
+    if (!self.portraitConstraints || !self.landscapeConstraints) return;
+    BOOL portrait = (self.view.bounds.size.height > self.view.bounds.size.width);
+    if (self.usingPortraitLayout == portrait) return;
+    self.usingPortraitLayout = portrait;
+    if (portrait) {
+        [NSLayoutConstraint deactivateConstraints:self.landscapeConstraints];
+        [NSLayoutConstraint activateConstraints:self.portraitConstraints];
+        if (self.sidebarWidthConstraint) { self.sidebarWidthConstraint.active = NO; }
+        if (self.rightPanelWidthConstraint) { self.rightPanelWidthConstraint.active = NO; }
+    } else {
+        [NSLayoutConstraint deactivateConstraints:self.portraitConstraints];
+        [NSLayoutConstraint activateConstraints:self.landscapeConstraints];
+        if (self.sidebarWidthConstraint) { self.sidebarWidthConstraint.active = YES; }
+        if (self.rightPanelWidthConstraint) { self.rightPanelWidthConstraint.active = YES; }
+    }
+    // 菜单卡在竖屏走横向排布(图标横排一行),横屏恢复竖排
+    if ([self.menuViewController respondsToSelector:@selector(setCompactHorizontalLayout:)]) {
+        [self.menuViewController performSelector:@selector(setCompactHorizontalLayout:) withObject:@(portrait)];
+    }
+    [self applyEdgeInsets];
+    [self.view setNeedsLayout];
 }
 
 /// 只做"屏边补偿"这一件事,便于从 traitCollectionDidChange / viewSafeAreaInsetsDidChange 两处调用。
@@ -225,6 +260,8 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    // ★ [PORTRAIT] 首次进入 / 转屏后对齐布局(只切一次,内部有 usingPortraitLayout 去重)
+    [self updateLayoutForCurrentOrientation];
     // card 布局四边外边距一致性由约束保证（用 view.edgeAnchor + kCardOuterMargin，
     // 不依赖 safeAreaLayoutGuide），此处无需额外补偿。
     // 之前用 additionalSafeAreaInsets 补偿 safeArea 不对称，但补偿后外边距 =
@@ -415,6 +452,11 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     sidebarTop.identifier    = @"edge-top";
     sidebarBottom.identifier = @"edge-bottom";
 
+    // ★ [PORTRAIT] 记下横屏那一套(供切换用)
+    self.landscapeConstraints = @[sidebarLeading, sidebarTop, sidebarBottom,
+                                  rightTrailing, rightTop, rightBottom,
+                                  contentTop, contentBottom];
+
     [NSLayoutConstraint activateConstraints:@[
         // 左侧菜单卡片
         sidebarLeading, sidebarTop, sidebarBottom,
@@ -429,11 +471,34 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
         [self.contentCard.trailingAnchor constraintEqualToAnchor:self.rightPanelCard.leadingAnchor constant:-kCardSpacing],
         contentTop, contentBottom
     ]];
+
+    // ★ [PORTRAIT] 竖屏折法:三张卡【竖着摞】—— 内容在上、右栏(含启动键)居中、菜单在底。
+    //   选择"竖摞"而不是"彻底重排成底部标签栏"的原因:右栏承载【启动游戏/下载进度】等核心操作,
+    //   彻底折叠会丢功能;竖摞则三块都在、功能零损失,且天然贴合安全区(岛在顶部时顶部留白)。
+    //   与横屏那一套互斥:由 updateLayoutForCurrentOrientation 二选一激活。
+    NSLayoutConstraint *pContentTop   = [self.contentCard.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:kCardOuterMarginPhone];
+    NSLayoutConstraint *pContentLead  = [self.contentCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:kCardOuterMarginPhone];
+    NSLayoutConstraint *pContentTrail = [self.contentCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kCardOuterMarginPhone];
+    NSLayoutConstraint *pRightTop     = [self.rightPanelCard.topAnchor constraintEqualToAnchor:self.contentCard.bottomAnchor constant:kCardSpacing];
+    NSLayoutConstraint *pRightLead    = [self.rightPanelCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:kCardOuterMarginPhone];
+    NSLayoutConstraint *pRightTrail   = [self.rightPanelCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kCardOuterMarginPhone];
+    NSLayoutConstraint *pSideLead     = [self.sidebarCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:kCardOuterMarginPhone];
+    NSLayoutConstraint *pSideTrail    = [self.sidebarCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kCardOuterMarginPhone];
+    NSLayoutConstraint *pSideBottom   = [self.sidebarCard.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-kCardOuterMarginPhone];
+    NSLayoutConstraint *pSideTop      = [self.sidebarCard.topAnchor constraintEqualToAnchor:self.rightPanelCard.bottomAnchor constant:kCardSpacing];
+    NSLayoutConstraint *pSideHeight   = [self.sidebarCard.heightAnchor constraintEqualToConstant:64];
+    for (NSLayoutConstraint *c in @[pContentTop, pContentLead, pContentTrail, pRightTop, pRightLead, pRightTrail,
+                                    pSideLead, pSideTrail, pSideBottom, pSideTop, pSideHeight]) {
+        c.identifier = @"portrait-set";
+    }
+    self.portraitConstraints = @[pContentTop, pContentLead, pContentTrail, pRightTop, pRightLead, pRightTrail,
+                                 pSideLead, pSideTrail, pSideBottom, pSideTop, pSideHeight];
 }
 
 - (void)setupChildViewControllers {
     // 左侧边栏 - 功能菜单
     LauncherMenuViewController *sidebarVC = [[LauncherMenuViewController alloc] init];
+    self.menuViewController = sidebarVC;   // ★ [PORTRAIT] 记下引用
     [self addChildViewController:sidebarVC];
     sidebarVC.view.translatesAutoresizingMaskIntoConstraints = NO;
     [self.sidebarCard addSubview:sidebarVC.view];
@@ -853,7 +918,13 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
 }
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
-    return UIInterfaceOrientationMaskLandscape;
+    // ★ [PORTRAIT] 放开竖屏:原来是写死 Landscape ⇒ 竖屏进不去。
+    // 竖屏排布由 LauncherCardLayoutViewController 切换(三卡竖摞 + 菜单横排);
+    // 游戏(SurfaceViewController)单独锁横屏,保证游戏内不会竖过来。
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+        return UIInterfaceOrientationMaskAll;
+    }
+    return UIInterfaceOrientationMaskAllButUpsideDown;
 }
 
 #pragma mark - UINavigationControllerDelegate

@@ -18,6 +18,21 @@
 
 @implementation LauncherMenuViewController
 
+#pragma mark - ★ [PORTRAIT] 排布切换
+
+/// 竖屏(compact):菜单改成【横向一行】并与卡片等宽;横屏恢复【竖向一列】。
+/// 只改 stack 的 axis/spacing,不动按钮与约束(约束是 leading/trailing 铺满,两向都成立)。
+- (void)setCompactHorizontalLayout:(NSNumber *)compactNumber {
+    BOOL compact = [compactNumber boolValue];
+    if (!self.menuStackView) return;
+    self.menuStackView.axis = compact ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
+    self.menuStackView.spacing = compact ? 4 : 8;
+    self.menuStackView.alignment = compact ? UIStackViewAlignmentCenter : UIStackViewAlignmentCenter;
+    // 竖排时按钮是"图标在上文字在下"(50x50);横排也用同样尺寸,靠均分铺开
+    [self.menuStackView setNeedsLayout];
+    [self.view setNeedsLayout];
+}
+
 #pragma mark - Lifecycle
 
 - (void)viewDidLoad {
@@ -327,8 +342,13 @@
     return YES;
 }
 
+/// ★ [PORTRAIT] 放开方向:原来写死 Landscape ⇒ 竖屏根本进不去。
+/// 竖屏下的排布由父布局 VC 通过 setCompactHorizontalLayout: 切换(三卡竖摞 + 菜单横排一行)。
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
-    return UIInterfaceOrientationMaskLandscape;
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+        return UIInterfaceOrientationMaskAll;
+    }
+    return UIInterfaceOrientationMaskAllButUpsideDown;
 }
 
 @end

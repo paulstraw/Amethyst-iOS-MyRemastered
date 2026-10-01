@@ -22,7 +22,7 @@ extern UIWindow *mainWindow;
     // 强制横屏 (iOS 16+)
     if (@available(iOS 16.0, *)) {
         UIWindowSceneGeometryPreferencesIOS *geometryPreferences = [[UIWindowSceneGeometryPreferencesIOS alloc] init];
-        geometryPreferences.interfaceOrientations = UIInterfaceOrientationMaskLandscape;
+        geometryPreferences.interfaceOrientations = UIInterfaceOrientationMaskAllButUpsideDown;   // ★ [PORTRAIT]
         [windowScene requestGeometryUpdateWithPreferences:geometryPreferences errorHandler:^(NSError *error) {
             NSLog(@"[SceneDelegate] Failed to update geometry: %@", error);
         }];
@@ -161,7 +161,7 @@ extern UIWindow *mainWindow;
 #pragma mark - Orientation Support (iOS 16+)
 
 - (UIInterfaceOrientationMask)scene:(UIScene *)scene supportedInterfaceOrientationsForWindowScene:(UIWindowScene *)windowScene API_AVAILABLE(ios(16.0)) {
-    return UIInterfaceOrientationMaskLandscape;
+    return UIInterfaceOrientationMaskAllButUpsideDown;   // ★ [PORTRAIT] 窗口层放开
 }
 
 @end
