@@ -1,11 +1,15 @@
 //
 //  UIKit+GlassSurface.h —— 液态玻璃外观助手(纯头文件,不新增 .m ⇒ 不改 CMake 源列表)
 //
-//  背景:本仓库 Info.plist 里 UIDesignRequiresCompatibility = true,App 沿用旧外观,
-//  系统不会自动把材质换成 iOS 26 的 Liquid Glass ⇒ 这里手动提供一层极薄封装:
-//  iOS 26+ 用 UIGlassEffect,旧系统回退到原有系统材质。颜色/材质全走系统语义 ⇒ 深浅色自动。
+//  ★ 关键:CI 用的是 Xcode 15.4(iOS 17 SDK)⇒ UIGlassEffect(iOS 26)在该 SDK 里【没有声明】。
+//    因此这里【不用编译期符号】,改用 NSClassFromString + objc_msgSend 的运行时调用:
+//      · 用旧 SDK 也能编译通过;
+//      · 真机是 iOS 26/27 ⇒ 运行时能找到 UIGlassEffect ⇒ 玻璃真实生效;
+//      · 系统更旧/类不存在 ⇒ 回退到原来的系统材质,行为不变。
+//  颜色/材质全走系统语义 ⇒ 深浅色自动正确,不写死任何颜色。
 //
 #import <UIKit/UIKit.h>
+#import <objc/message.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -15,18 +19,24 @@ typedef NS_ENUM(NSInteger, AmeGlassRadius) {
     AmeGlassRadiusPanel = 26,
 };
 
-/// 统一材质:iOS 26+ = 液态玻璃;旧系统 = 原来的系统材质(fallbackStyle)。
-/// 真机上想要"App 整体变液态玻璃"时,把各处 effectWithStyle: 换成它即可。
+/// 统一材质:iOS 26+ = 液态玻璃;旧系统 = fallbackStyle 对应的系统材质。
 static inline UIVisualEffect *AmeGlassEffect(UIBlurEffectStyle fallbackStyle) {
-    if (@available(iOS 26.0, *)) {
-        UIGlassEffect *glass = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
-        glass.tintColor = nil;      // 跟随系统,不写死颜色
-        return glass;
+    static Class glassCls = Nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        glassCls = NSClassFromString(@"UIGlassEffect");   // iOS 26 才有;旧系统为 Nil
+    });
+    if (glassCls != Nil && [glassCls respondsToSelector:@selector(effectWithStyle:)]) {
+        // UIGlassEffectStyleRegular == 0;用 objc_msgSend 调用以避免编译期依赖该符号
+        id glass = ((id (*)(id, SEL, NSInteger))objc_msgSend)(glassCls, @selector(effectWithStyle:), 0);
+        if (glass != nil && [glass isKindOfClass:[UIVisualEffect class]]) {
+            return (UIVisualEffect *)glass;
+        }
     }
     return [UIBlurEffect effectWithStyle:fallbackStyle];
 }
 
-/// 给 view 贴一层玻璃并设圆角(用于卡片/面板/列表行)。返回承载视图,插在最底层。
+/// 给 view 贴一层玻璃并设圆角(卡片/面板/列表行用)。返回承载视图,插在最底层。
 static inline UIVisualEffectView * _Nullable AmeApplyGlassSurface(UIView *view, AmeGlassRadius radius) {
     if (view == nil) { return nil; }
     UIVisualEffect *effect = AmeGlassEffect(UIBlurEffectStyleSystemMaterial);
@@ -51,8 +61,7 @@ static inline UIVisualEffectView * _Nullable AmeApplyGlassSurface(UIView *view, 
     return blur;
 }
 
-/// 灵动岛/刘海安全区:横屏时有岛那侧 ≈59pt、另一侧 0;竖屏顶部由系统给的 top 决定。
-/// 布局请锚到 safeAreaLayoutGuide,并在 viewSafeAreaInsetsDidChange 里重排(岛会随转屏换边)。
+/// 灵动岛/刘海安全区:横屏有岛那侧 ≈59pt、另一侧 0;竖屏顶部由系统 top 决定。
 static inline UIEdgeInsets AmeSafeInsets(UIView *view) {
     if (@available(iOS 11.0, *)) { return view.safeAreaInsets; }
     return UIEdgeInsetsZero;
