@@ -154,11 +154,10 @@ jobs:
 
       - name: Build for ${{ matrix.platform_name }}
         env:
-          CMAKE_VERBOSE_MAKEFILE: "ON"
-          VERBOSE: "1"
-        env:
           IPHONEOS_DEPLOYMENT_TARGET: 14.0
           CONFIG_CURSEFORGE_API_KEY: ${{ secrets.CONFIG_CURSEFORGE_API_KEY }}
+          CMAKE_VERBOSE_MAKEFILE: "ON"
+          VERBOSE: "1"
         run: |
           set -o pipefail
           export PATH=/opt/homebrew/bin:$PATH
