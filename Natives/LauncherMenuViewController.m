@@ -26,9 +26,27 @@
     BOOL compact = [compactNumber boolValue];
     if (!self.menuStackView) return;
     self.menuStackView.axis = compact ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
-    self.menuStackView.spacing = compact ? 4 : 8;
-    self.menuStackView.alignment = compact ? UIStackViewAlignmentCenter : UIStackViewAlignmentCenter;
-    // 竖排时按钮是"图标在上文字在下"(50x50);横排也用同样尺寸,靠均分铺开
+    self.menuStackView.spacing = compact ? 6 : 8;
+    self.menuStackView.alignment = UIStackViewAlignmentCenter;
+    self.menuStackView.distribution = UIStackViewDistributionEqualSpacing;
+
+    // ★ 关键修复(竖屏错位根因):按钮的 titleEdgeInsets/imageEdgeInsets 是按【竖排】
+    //   "图标在上、文字在下"手调的(见 createMenuButtonWithItem:)。横排时必须把它们清零,
+    //   否则图标与文字会各自偏到角落 —— 这就是竖屏下菜单看着"错位/歪"的原因。
+    for (UIView *v in self.menuStackView.arrangedSubviews) {
+        if (![v isKindOfClass:[UIButton class]]) continue;
+        UIButton *b = (UIButton *)v;
+        if (compact) {
+            b.titleEdgeInsets = UIEdgeInsetsZero;
+            b.imageEdgeInsets = UIEdgeInsetsZero;
+            b.contentEdgeInsets = UIEdgeInsetsMake(2, 0, 2, 0);
+            b.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
+        } else {
+            b.titleEdgeInsets = UIEdgeInsetsMake(30, -30, 0, 0);   // 与原始实现一致
+            b.imageEdgeInsets = UIEdgeInsetsMake(-10, 0, 0, 0);
+            b.contentEdgeInsets = UIEdgeInsetsZero;
+        }
+    }
     [self.menuStackView setNeedsLayout];
     [self.view setNeedsLayout];
 }

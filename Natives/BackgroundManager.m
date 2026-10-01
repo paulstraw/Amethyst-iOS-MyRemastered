@@ -7,7 +7,7 @@
 //
 
 #import "BackgroundManager.h"
-#import "UIKit+GlassSurface.h"   // ★ 液态玻璃材质
+#import "UIKit+GlassSurface.h"   // ★ 液态玻璃材质 + 玻璃质感(高光边)
 #import <Photos/Photos.h>
 
 static NSString * const kBackgroundTypeKey = @"background_type";
@@ -496,6 +496,9 @@ static const NSInteger kDefaultBackgroundTag = 99995;
             UIVisualEffect *blur = AmeGlassEffect(UIBlurEffectStyleSystemMaterial);   // ★ 列表行玻璃
             UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blur];
             blurView.frame = cell.bounds;
+            // ★ 玻璃质感(与面板一致)
+            AmeAttachGlassRim(cell.contentView, cell.contentView.layer.cornerRadius);
+            AmeAttachGlassRim(cell, cell.layer.cornerRadius);
             blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
             // Remove old background views
@@ -738,12 +741,8 @@ static const NSInteger kDefaultBackgroundTag = 99995;
         // 修复：使用 SystemThinMaterial 替代 SystemMaterialDark，使左右侧栏
         // 在浅色/深色模式下都自适应，且足够通透让背景图透出。
         // SystemMaterialDark 过于不透明，导致"左右两边完全不透明"。
-        UIBlurEffect *blur;
-        if (@available(iOS 13.0, *)) {
-            blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial];
-        } else {
-            blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleLight];
-        }
+        // ★ 真玻璃可用就用真玻璃(iOS 26 设备),否则系统材质 + 下面加的高光边
+        UIVisualEffect *blur = AmeGlassEffect(UIBlurEffectStyleSystemThinMaterial);
         UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blur];
         blurView.tag = kBackgroundBlurTag;
         blurView.frame = view.bounds;
@@ -770,6 +769,8 @@ static const NSInteger kDefaultBackgroundTag = 99995;
 
         [view insertSubview:blurView atIndex:0];
         view.backgroundColor = [UIColor clearColor];
+        // ★ 玻璃质感:高光描边 + 上缘内高光(不依赖 iOS 26 SDK)
+        AmeAttachGlassRim(view, view.layer.cornerRadius);
     } else {
         // 半透明效果 - 移除 blur view，使用半透明背景
         // 修复：使用 systemBackgroundColor 替代硬编码深灰，自适应浅色/深色模式

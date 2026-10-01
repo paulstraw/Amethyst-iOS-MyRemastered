@@ -256,6 +256,20 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
         if ([c.identifier isEqualToString:@"edge-top"])         { c.constant =  mTop; }
         else if ([c.identifier isEqualToString:@"edge-bottom"]) { c.constant = -mBottom; }
     }
+    // ★ [PORTRAIT-SAFE] 竖屏专用:顶部卡片的 top 与底部菜单卡的 bottom 各自吃安全区
+    if (self.usingPortraitLayout) {
+        for (NSLayoutConstraint *c in self.portraitConstraints) {
+            if ([c.identifier isEqualToString:@"portrait-top"]) {
+                c.constant = kCardOuterMarginPhone + safe.top;       // 竖屏岛在顶部
+            }
+        }
+    } else {
+        for (NSLayoutConstraint *c in self.portraitConstraints) {
+            if ([c.identifier isEqualToString:@"portrait-top"]) {
+                c.constant = kCardOuterMarginPhone;                  // 横屏用不到这条,复位
+            }
+        }
+    }
     [self.view setNeedsLayout];
 }
 
@@ -478,6 +492,8 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     //   彻底折叠会丢功能;竖摞则三块都在、功能零损失,且天然贴合安全区(岛在顶部时顶部留白)。
     //   与横屏那一套互斥:由 updateLayoutForCurrentOrientation 二选一激活。
     NSLayoutConstraint *pContentTop   = [self.contentCard.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:kCardOuterMarginPhone];
+    // ★ [PORTRAIT-SAFE] 竖屏时岛在顶部 ⇒ 这条 top 约束要在 applyEdgeInsets 里额外加 insets.top
+    pContentTop.identifier = @"portrait-top";
     NSLayoutConstraint *pContentLead  = [self.contentCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:kCardOuterMarginPhone];
     NSLayoutConstraint *pContentTrail = [self.contentCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kCardOuterMarginPhone];
     NSLayoutConstraint *pRightTop     = [self.rightPanelCard.topAnchor constraintEqualToAnchor:self.contentCard.bottomAnchor constant:kCardSpacing];
