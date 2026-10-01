@@ -11,7 +11,25 @@ endif()
 
 configure_file(${CMAKE_CURRENT_LIST_DIR}/config.h.in ${CMAKE_CURRENT_LIST_DIR}/config.h)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -target arm64-apple-ios -mcpu=apple-a8 -fcommon -fobjc-arc -ObjC -F'${CMAKE_OSX_SYSROOT}/System/Cryptexes/OS/System/Library/Frameworks'")
+# ★ 关键修正:从 CMAKE_OSX_SYSROOT 解析出 SDK 版本(如 .../iPhoneOS26.2.sdk -> 26.2),
+#   并把 -target 补成 arm64-apple-ios<min>-ios<SDK>。
+#   为什么必须这么做:原来只写 "-target arm64-apple-ios"(不带 SDK 版本),
+#   clang 会把 SDK 记成默认值 ⇒ 产物主二进制 LC_BUILD_VERSION 的 sdk 字段不是实际 SDK
+#   ⇒ 系统按 SDK 判定"该应用未用 iOS 26 SDK 构建" ⇒ 不采用 iOS 26 新外观(拿不到液态玻璃)。
+#   带上 SDK 版本后,产物会如实记录 sdk=26.x,系统才会给新外观。
+if(CMAKE_OSX_SYSROOT)
+  get_filename_component(AME_SDK_NAME "${CMAKE_OSX_SYSROOT}" NAME)      # iPhoneOS26.2.sdk
+  string(REGEX MATCH "iPhoneOS([0-9]+\.[0-9]+)" _m "${AME_SDK_NAME}")   # 取版本
+  if(CMAKE_MATCH_1)
+    set(AME_SDK_VERSION "${CMAKE_MATCH_1}")
+  endif()
+endif()
+if(NOT AME_SDK_VERSION)
+  set(AME_SDK_VERSION "26.2")   # 兜底(CI 已锁定 Xcode 26.3/iOS 26.2 SDK)
+endif()
+message(STATUS "★ AME_SDK_VERSION = ${AME_SDK_VERSION} (from ${CMAKE_OSX_SYSROOT})")
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -target arm64-apple-ios14.0-ios${AME_SDK_VERSION} -mcpu=apple-a8 -fcommon -fobjc-arc -ObjC -F'${CMAKE_OSX_SYSROOT}/System/Cryptexes/OS/System/Library/Frameworks'")
 set(CMAKE_C_FLAGS_DEBUG "-funwind-tables -g")
 
 if("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Linux|^GNU$|Android")
