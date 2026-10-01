@@ -8,6 +8,7 @@
 //
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
+#import <objc/runtime.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -85,6 +86,67 @@ static inline UIVisualEffectView * _Nullable AmeApplyGlassSurface(UIView *view, 
 static inline UIEdgeInsets AmeSafeInsets(UIView *view) {
     if (@available(iOS 11.0, *)) { return view.safeAreaInsets; }
     return UIEdgeInsetsZero;
+}
+
+
+/// ★ 玻璃质感(不依赖 iOS 26 SDK):给载体加"高光描边 + 上缘内高光"。
+/// 为什么要它:真系统液态玻璃需要 iOS 26 SDK 构建(CI 现已换到 Xcode 26.3/iOS 26.2 SDK,
+/// 那时系统会自动接管;此外这里作叠层仍然成立)。旧 SDK 下它是主要观感来源。
+/// 幂等:用一个 tag 去重,重复调用不会叠加。
+static inline void AmeAttachGlassRim(UIView *host, CGFloat radius) {
+    if (host == nil) return;
+    static const NSInteger kAmeRimTag = 0x4D52494D;   // 'MRIM'
+    for (UIView *sub in host.subviews) {
+        if (sub.tag == kAmeRimTag) { return; }        // 已加过 ⇒ 幂等
+    }
+    host.layer.cornerRadius = radius;
+    host.layer.cornerCurve = kCACornerCurveContinuous;
+    host.layer.masksToBounds = YES;
+
+    // 玻璃描边:深浅色都给亮边
+    UIColor *rim = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *tc) {
+        return (tc.userInterfaceStyle == UIUserInterfaceStyleDark)
+            ? [UIColor colorWithWhite:1.0 alpha:0.22]
+            : [UIColor colorWithWhite:1.0 alpha:0.75];
+    }];
+    host.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    host.layer.borderColor = rim.CGColor;
+
+    // 上缘内高光:上亮下透的渐变(玻璃反光)
+    UIView *shine = [[UIView alloc] initWithFrame:CGRectZero];
+    shine.tag = kAmeRimTag;
+    shine.userInteractionEnabled = NO;
+    shine.translatesAutoresizingMaskIntoConstraints = NO;
+    shine.backgroundColor = [UIColor clearColor];
+    CAGradientLayer *g = [CAGradientLayer layer];
+    g.colors = @[(id)[UIColor colorWithWhite:1.0 alpha:0.20].CGColor,
+                 (id)[UIColor colorWithWhite:1.0 alpha:0.05].CGColor,
+                 (id)[UIColor clearColor].CGColor];
+    g.locations = @[@0.0, @0.28, @0.62];
+    g.startPoint = CGPointMake(0.5, 0.0);
+    g.endPoint   = CGPointMake(0.5, 1.0);
+    g.cornerRadius = radius;
+    if (@available(iOS 13.0, *)) { g.cornerCurve = kCACornerCurveContinuous; }
+    [shine.layer addSublayer:g];
+    shine.clipsToBounds = YES;
+    shine.layer.cornerRadius = radius;
+    [host addSubview:shine];
+    [NSLayoutConstraint activateConstraints:@[
+        [shine.leadingAnchor  constraintEqualToAnchor:host.leadingAnchor],
+        [shine.trailingAnchor constraintEqualToAnchor:host.trailingAnchor],
+        [shine.topAnchor      constraintEqualToAnchor:host.topAnchor],
+        [shine.bottomAnchor   constraintEqualToAnchor:host.bottomAnchor],
+    ]];
+    objc_setAssociatedObject(shine, "ameRimGradient", g, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+/// 载体尺寸变化时刷新高光渐变(布局后调用;找不到就什么也不做)
+static inline void AmeRefreshGlassRim(UIView *host) {
+    if (host == nil) return;
+    for (UIView *sub in host.subviews) {
+        CAGradientLayer *g = (CAGradientLayer *)objc_getAssociatedObject(sub, "ameRimGradient");
+        if (g != nil) { g.frame = sub.bounds; }
+    }
 }
 
 NS_ASSUME_NONNULL_END
