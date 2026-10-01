@@ -20,7 +20,10 @@
 //    按其实现移植;原作者注释中的 Task 编号与"踩过的坑"说明保留。
 
 #import "NMToast.h"
-#import "UIKit+NativeSurface.h"
+// ★ 移植改动:原实现在此处引入 @Gsjsjzhznsz 的 UIKit+NativeSurface 头,并使用其
+//   ame_applyCardSurfaceWithRadius:(新拟态卡片表面,378 行引擎)。该文件本仓库没有,
+//   ⇒ 改为直接使用本仓库已有的系统语义色 + BackgroundManager 材质(见下)。故不需要该头文件。
+#import "BackgroundManager.h"   // ★ 卡片表面走本仓库既有材质(已是液态玻璃)
 // UIWindow.mainWindow 来自工程内 UIWindow(global) 分类（UIKit+hook.h）
 // Task137：文件已从 NeomorphKit/ 迁至 Natives/ 根，相对路径 ../ 已平化
 #import "UIKit+hook.h"
@@ -109,14 +112,23 @@ static __weak NMToast *s_nm125_current = nil;
     // ---- 通知卡片（Task137：原生表面，无自绘阴影）----
     self.cardView = [[UIView alloc] initWithFrame:CGRectZero];
     self.cardView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.cardView ame_applyCardSurfaceWithRadius:kNMToastCornerRadius];
+    // ★ 移植改动:原为 [self.cardView ame_applyCardSurfaceWithRadius:kNMToastCornerRadius]
+    //   (他的新拟态卡片表面)。这里改为本仓库的做法:系统语义底 + 圆角 + BackgroundManager 材质。
+    //   好处:本仓库 BackgroundManager 的材质已是液态玻璃(iOS 26 UIGlassEffect),toast 与全 App 一致。
+    self.cardView.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+    self.cardView.layer.cornerRadius = kNMToastCornerRadius;
+    self.cardView.layer.cornerCurve = kCACornerCurveContinuous;
+    self.cardView.layer.masksToBounds = YES;
+    [[BackgroundManager sharedManager] applyEffectToView:self.cardView];
 
     // ---- 正文 ----
     self.messageLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.messageLabel.numberOfLines = 0;
     self.messageLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-    self.messageLabel.textColor = AmeNeumorphPrimaryTextColor(); // Task160 规格主文字
+    // ★ 移植改动:原为 AmeNeumorphPrimaryTextColor()(他的新拟态主文字色,原生模式下等于 labelColor)
+    //   ⇒ 直接用系统语义色。
+    self.messageLabel.textColor = [UIColor labelColor];
     self.messageLabel.text = message;
 
     [self.cardView addSubview:self.messageLabel];
