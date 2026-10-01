@@ -463,6 +463,10 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 
 @property (nonatomic, strong) UISegmentedControl *tabSegment;
 @property (nonatomic, strong) UISegmentedControl *versionFilterSegment;
+// ★ [HIG] 侧栏下载源选择器(替代原自绘轨道+滑块+双按钮)
+@property (nonatomic, strong) UISegmentedControl *sidebarSourceSegment;
+// ★ [HIG] 当前下载源所属分类(mod/shader/…):分段控件回调里需要它来复用原有点击逻辑
+@property (nonatomic, copy) NSString *currentSourceTypeForSegment;
 // versionFilterSegment 高度约束：版本 tab 显示（约 32pt），其他 tab 设为 0，
 // 避免 hidden=YES 时仍占空间导致 tabSegment 与 searchBar 之间出现"大白条"。
 @property (nonatomic, strong) NSLayoutConstraint *versionFilterHeightConstraint;
@@ -1083,7 +1087,9 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 }
 
 - (void)setupSourceSwitch {
-    // 仿 FCL 安卓风格：居中的圆角胶囊切换器，带彩色滑块与品牌色
+    // ★ [HIG] 顶部这套"仿 FCL 安卓风格"胶囊切换器【已弃用】:下载源现在只在侧栏选。
+    //   原实现自绘轨道+彩色滑块+双按钮,并把选中项写死白色(浅色下不可见)。这里不建视图直接返回。
+    return;
     self.sourceSwitchContainer = [[UIView alloc] init];
     self.sourceSwitchContainer.translatesAutoresizingMaskIntoConstraints = NO;
     self.sourceSwitchContainer.hidden = YES;
@@ -1221,6 +1227,16 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
     sourceTitleLabel.textColor = [UIColor secondaryLabelColor];
     [self.filterSidebarContainer addSubview:sourceTitleLabel];
 
+    // ★ [HIG] 用系统 UISegmentedControl 取代"自绘轨道+绿/橙滑块+双按钮"(最直白的安卓观感):
+    //   自动获得系统外观/材质、深浅色、Dynamic Type、无障碍语义。
+    self.sidebarSourceSegment = [[UISegmentedControl alloc] initWithItems:@[@"Mod", @"CF"]];
+    self.sidebarSourceSegment.translatesAutoresizingMaskIntoConstraints = NO;
+    self.sidebarSourceSegment.selectedSegmentIndex = 0;
+    [self.sidebarSourceSegment addTarget:self action:@selector(sidebarSourceSegmentChanged:)
+                        forControlEvents:UIControlEventValueChanged];
+    [self.sidebarSourceContainer addSubview:self.sidebarSourceSegment];
+
+    if (NO) {   // ★ 旧自绘控件不再创建(保留代码便于回退)
     // 下载源轨道
     self.sidebarSourceTrack = [[UIView alloc] init];
     self.sidebarSourceTrack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1260,8 +1276,15 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
     self.sidebarSliderLeftConstraint = [self.sidebarSourceSlider.leadingAnchor constraintEqualToAnchor:self.sidebarSourceTrack.leadingAnchor constant:2];
     self.sidebarSliderRightConstraint = [self.sidebarSourceSlider.trailingAnchor constraintEqualToAnchor:self.sidebarSourceTrack.trailingAnchor constant:-2];
     self.sidebarSliderRightConstraint.active = NO;
+    }   // ★ [HIG] 旧自绘轨道/滑块/按钮 到此为止
 
     [NSLayoutConstraint activateConstraints:@[
+        // ★ [HIG] 分段控件铺满侧栏来源容器
+        [self.sidebarSourceSegment.topAnchor constraintEqualToAnchor:self.sidebarSourceContainer.topAnchor],
+        [self.sidebarSourceSegment.leadingAnchor constraintEqualToAnchor:self.sidebarSourceContainer.leadingAnchor],
+        [self.sidebarSourceSegment.trailingAnchor constraintEqualToAnchor:self.sidebarSourceContainer.trailingAnchor],
+        [self.sidebarSourceSegment.bottomAnchor constraintEqualToAnchor:self.sidebarSourceContainer.bottomAnchor],
+
         // 下载源标题
         [sourceTitleLabel.topAnchor constraintEqualToAnchor:self.filterSidebarContainer.topAnchor constant:12],
         [sourceTitleLabel.leadingAnchor constraintEqualToAnchor:self.filterSidebarContainer.leadingAnchor constant:12],
@@ -1273,6 +1296,10 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
         [self.sidebarSourceContainer.trailingAnchor constraintEqualToAnchor:self.filterSidebarContainer.trailingAnchor constant:-8],
         [self.sidebarSourceContainer.heightAnchor constraintEqualToConstant:32],
 
+        // ★ [HIG] 旧自绘约束整体跳过(视图已不创建⇒激活会崩)
+    ]];
+    if (NO) {
+        [NSLayoutConstraint activateConstraints:@[
         // 轨道铺满容器
         [self.sidebarSourceTrack.topAnchor constraintEqualToAnchor:self.sidebarSourceContainer.topAnchor],
         [self.sidebarSourceTrack.leadingAnchor constraintEqualToAnchor:self.sidebarSourceContainer.leadingAnchor],
@@ -1295,7 +1322,8 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
         [self.sidebarCurseforgeButton.bottomAnchor constraintEqualToAnchor:self.sidebarSourceTrack.bottomAnchor],
         [self.sidebarCurseforgeButton.trailingAnchor constraintEqualToAnchor:self.sidebarSourceTrack.trailingAnchor],
         [self.sidebarCurseforgeButton.widthAnchor constraintEqualToAnchor:self.sidebarSourceTrack.widthAnchor multiplier:0.5]
-    ]];
+        ]];
+    }   // ★ [HIG] 旧自绘约束结束
 
     // ===== 2. 游戏版本选择按钮 =====
     self.sidebarVersionButton = [self createSidebarSelectButtonWithTitle:localize(@"i18n_str_2031", nil)
@@ -1592,6 +1620,8 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 #pragma mark - Source Switch
 
 - (void)updateSourceSwitchButtonsForType:(NSString *)type {
+    // ★ [HIG] 记下当前分类,供侧栏分段控件回调使用
+    self.currentSourceTypeForSegment = type;
     NSString *currentSource = [PLPreferences currentDownloadSourceForType:type];
     BOOL isModrinth = [currentSource isEqualToString:@"modrinth"];
 
@@ -1612,22 +1642,29 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
     self.modrinthSourceButton.tag = [self tagForType:type];
     self.curseforgeSourceButton.tag = [self tagForType:type];
 
-    // ===== 同步更新侧边栏的下载源选择器 =====
-    [self.sidebarModrinthButton setTitleColor:isModrinth ? [UIColor whiteColor] : [UIColor labelColor] forState:UIControlStateNormal];
-    [self.sidebarCurseforgeButton setTitleColor:isModrinth ? [UIColor labelColor] : [UIColor whiteColor] forState:UIControlStateNormal];
+        // ★ [HIG] 侧栏改系统分段 ⇒ 只设 selectedSegmentIndex(不再有滑块动画/写死颜色)
+    self.sidebarSourceSegment.selectedSegmentIndex = isModrinth ? 0 : 1;
 
-    self.sidebarSliderLeftConstraint.active = isModrinth;
-    self.sidebarSliderRightConstraint.active = !isModrinth;
-    UIColor *sidebarSliderColor = isModrinth ? [UIColor systemGreenColor] : [UIColor systemOrangeColor];
-
-    [UIView animateWithDuration:0.25 delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
-        self.sidebarSourceSlider.backgroundColor = sidebarSliderColor;
-        [self.sidebarSourceTrack layoutIfNeeded];
-    } completion:nil];
-
-    // 记录当前类型到侧边栏按钮的 tag，用于点击事件中获取类型
+// 记录当前类型到侧边栏按钮的 tag，用于点击事件中获取类型
     self.sidebarModrinthButton.tag = [self tagForType:type];
     self.sidebarCurseforgeButton.tag = [self tagForType:type];
+}
+
+/// ★ [HIG] 侧栏分段控件 → 复用原有下载源点击逻辑
+- (void)sidebarSourceSegmentChanged:(UISegmentedControl *)sender {
+    NSString *type = self.currentSourceTypeForSegment;
+    if (type.length == 0) {                 // 兜底:按当前 tab 推断
+        NSInteger tab = self.tabSegment.selectedSegmentIndex;
+        type = (tab == 0) ? @"mod" : (tab == 1 ? @"shader" : (tab == 2 ? @"resourcepack" : (tab == 3 ? @"datapack" : (tab == 4 ? @"modpack" : @"world"))));
+    }
+    NSInteger tag = [self tagForType:type];
+    if (sender.selectedSegmentIndex == 0) {
+        self.sidebarModrinthButton.tag = tag;
+        [self sidebarModrinthClicked:self.sidebarModrinthButton];
+    } else {
+        self.sidebarCurseforgeButton.tag = tag;
+        [self sidebarCurseforgeClicked:self.sidebarCurseforgeButton];
+    }
 }
 
 - (NSInteger)tagForType:(NSString *)type {

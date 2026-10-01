@@ -418,8 +418,8 @@ static NSString *festivalGreeting(void) {
     self.avatarImageView.layer.cornerRadius = 26;
     self.avatarImageView.layer.masksToBounds = YES;
     self.avatarImageView.layer.borderWidth = 2.5;
-    self.avatarImageView.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.35].CGColor;
-    self.avatarImageView.backgroundColor = [UIColor colorWithWhite:0.15 alpha:1.0];
+    self.avatarImageView.layer.borderColor = [UIColor separatorColor].CGColor;
+    self.avatarImageView.backgroundColor = [UIColor tertiarySystemFillColor];
     self.avatarImageView.image = [UIImage systemImageNamed:@"person.circle.fill"];
     self.avatarImageView.tintColor = [UIColor systemGrayColor];
     [self.contentContainer addSubview:self.avatarImageView];
@@ -427,7 +427,7 @@ static NSString *festivalGreeting(void) {
     // 欢迎文本
     self.welcomeLabel = [[UILabel alloc] init];
     self.welcomeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.welcomeLabel.font = [UIFont systemFontOfSize:21 weight:UIFontWeightBold];
+    self.welcomeLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle2];
     self.welcomeLabel.textColor = [UIColor labelColor];
     self.welcomeLabel.numberOfLines = 1;
     self.welcomeLabel.adjustsFontSizeToFitWidth = YES;
@@ -437,7 +437,7 @@ static NSString *festivalGreeting(void) {
     // 节日/时段问候
     self.greetingLabel = [[UILabel alloc] init];
     self.greetingLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.greetingLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    self.greetingLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.greetingLabel.textColor = [UIColor secondaryLabelColor];
     self.greetingLabel.numberOfLines = 1;
     [self.contentContainer addSubview:self.greetingLabel];
@@ -490,14 +490,14 @@ static NSString *festivalGreeting(void) {
     
     self.titleLabel = [[UILabel alloc] init];
     self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    self.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
     self.titleLabel.textColor = [UIColor tertiaryLabelColor];
     self.titleLabel.textAlignment = NSTextAlignmentLeft;
     [self.contentContainer addSubview:self.titleLabel];
     
     self.valueLabel = [[UILabel alloc] init];
     self.valueLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.valueLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+    self.valueLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle3];
     self.valueLabel.textColor = [UIColor labelColor];
     self.valueLabel.numberOfLines = 2;
     self.valueLabel.adjustsFontSizeToFitWidth = YES;
@@ -544,14 +544,14 @@ static NSString *festivalGreeting(void) {
     
     self.messageLabel = [[UILabel alloc] init];
     self.messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.messageLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    self.messageLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.messageLabel.textColor = [UIColor labelColor];
     self.messageLabel.numberOfLines = 0;
     [self.contentContainer addSubview:self.messageLabel];
     
     self.actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.actionButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.actionButton.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    self.actionButton.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.actionButton.layer.cornerRadius = 8;
     self.actionButton.layer.cornerCurve = kCACornerCurveContinuous;
     self.actionButton.clipsToBounds = YES;
@@ -598,15 +598,15 @@ static NSString *festivalGreeting(void) {
     self.thumbnailView.clipsToBounds = YES;
     self.thumbnailView.layer.cornerRadius = 10;
     self.thumbnailView.layer.cornerCurve = kCACornerCurveContinuous;
-    self.thumbnailView.backgroundColor = [UIColor colorWithWhite:0.15 alpha:1.0];
+    self.thumbnailView.backgroundColor = [UIColor tertiarySystemFillColor];
     self.thumbnailView.image = [UIImage systemImageNamed:@"newspaper.fill"];
-    self.thumbnailView.tintColor = [UIColor colorWithWhite:0.4 alpha:1.0];
+    self.thumbnailView.tintColor = [UIColor tertiaryLabelColor];
     [self.contentContainer addSubview:self.thumbnailView];
     
     // 标题
     self.titleLabel = [[UILabel alloc] init];
     self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+    self.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     self.titleLabel.textColor = [UIColor labelColor];
     self.titleLabel.numberOfLines = 2;
     [self.contentContainer addSubview:self.titleLabel];
@@ -614,7 +614,7 @@ static NSString *festivalGreeting(void) {
     // 摘要
     self.summaryLabel = [[UILabel alloc] init];
     self.summaryLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.summaryLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
+    self.summaryLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
     self.summaryLabel.textColor = [UIColor tertiaryLabelColor];
     self.summaryLabel.numberOfLines = 2;
     [self.contentContainer addSubview:self.summaryLabel];
@@ -622,7 +622,7 @@ static NSString *festivalGreeting(void) {
     // 占位提示
     self.placeholderLabel = [[UILabel alloc] init];
     self.placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.placeholderLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+    self.placeholderLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption2];
     self.placeholderLabel.textColor = [UIColor quaternaryLabelColor];
     self.placeholderLabel.text = localize(@"i18n_str_346", nil);
     [self.contentContainer addSubview:self.placeholderLabel];
@@ -669,7 +669,7 @@ static NSString *festivalGreeting(void) {
     
     self.titleLabel = [[UILabel alloc] init];
     self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    self.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.titleLabel.textColor = [UIColor labelColor];
     self.titleLabel.numberOfLines = 1;
     self.titleLabel.adjustsFontSizeToFitWidth = YES;
@@ -843,7 +843,7 @@ static NSString *festivalGreeting(void) {
     self.headerTitleLabel = [[UILabel alloc] init];
     self.headerTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.headerTitleLabel.text = localize(@"i18n_str_349", nil);
-    self.headerTitleLabel.font = [UIFont systemFontOfSize:26 weight:UIFontWeightBold];
+    self.headerTitleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle1];
     self.headerTitleLabel.textColor = [UIColor labelColor];
     [self.headerView addSubview:self.headerTitleLabel];
     
@@ -852,7 +852,7 @@ static NSString *festivalGreeting(void) {
     UIImage *gearIcon = [UIImage systemImageNamed:@"slider.horizontal.3"];
     [self.customizeButton setImage:gearIcon forState:UIControlStateNormal];
     [self.customizeButton setTitle:[@" " stringByAppendingString:localize(@"preference.title.appicon-custom", nil)] forState:UIControlStateNormal];
-    self.customizeButton.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    self.customizeButton.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.customizeButton.tintColor = [UIColor secondaryLabelColor];
     [self.customizeButton addTarget:self action:@selector(openCustomize) forControlEvents:UIControlEventTouchUpInside];
     [self.headerView addSubview:self.customizeButton];

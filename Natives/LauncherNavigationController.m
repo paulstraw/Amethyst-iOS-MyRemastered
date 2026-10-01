@@ -101,7 +101,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     setButtonPointerInteraction(self.buttonInstall);
     [self.buttonInstall setTitle:localize(@"Play", nil) forState:UIControlStateNormal];
     self.buttonInstall.autoresizingMask = AUTORESIZE_MASKS;
-    self.buttonInstall.backgroundColor = [UIColor colorWithRed:121/255.0 green:56/255.0 blue:162/255.0 alpha:1.0];
+    self.buttonInstall.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *tc){ return tc.userInterfaceStyle == UIUserInterfaceStyleDark ? [UIColor colorWithRed:150/255.0 green:88/255.0 blue:196/255.0 alpha:1.0] : [UIColor colorWithRed:121/255.0 green:56/255.0 blue:162/255.0 alpha:1.0]; }];
     self.buttonInstall.layer.cornerRadius = 5;
     self.buttonInstall.frame = CGRectMake(self.toolbar.frame.size.width * 0.8, 4, self.toolbar.frame.size.width * 0.2, self.toolbar.frame.size.height - 8);
     self.buttonInstall.tintColor = UIColor.whiteColor;
@@ -118,7 +118,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     self.downloadCenterButton = [UIButton buttonWithType:UIButtonTypeSystem];
     // 不使用按钮的 title 显示文字，改用独立的 progressLabel 避免与图标布局冲突
     self.downloadCenterButton.tintColor = [UIColor whiteColor];
-    self.downloadCenterButton.backgroundColor = [UIColor colorWithRed:121/255.0 green:56/255.0 blue:162/255.0 alpha:0.85];
+    self.downloadCenterButton.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *tc){ return tc.userInterfaceStyle == UIUserInterfaceStyleDark ? [UIColor colorWithRed:150/255.0 green:88/255.0 blue:196/255.0 alpha:0.85] : [UIColor colorWithRed:121/255.0 green:56/255.0 blue:162/255.0 alpha:0.85]; }];
     self.downloadCenterButton.layer.cornerRadius = 5;
     self.downloadCenterButton.frame = CGRectMake(4, 4, dcBtnWidth, dcBtnHeight);
     self.downloadCenterButton.autoresizingMask = UIViewAutoresizingFlexibleRightMargin;

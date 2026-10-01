@@ -178,7 +178,7 @@ static NSString *PLFormatDuration(NSTimeInterval seconds) {
     self.statusIconView.tintColor = [UIColor tertiaryLabelColor];
 
     self.titleLabel = [[UILabel alloc] init];
-    self.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    self.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.titleLabel.textColor = [UIColor labelColor];
     self.titleLabel.numberOfLines = 1;
     [self.titleLabel setContentHuggingPriority:249 forAxis:UILayoutConstraintAxisHorizontal];
@@ -219,7 +219,7 @@ static NSString *PLFormatDuration(NSTimeInterval seconds) {
 
     // 当前文件名（单行中部截断，长文件名仍能看清首尾）
     self.messageLabel = [[UILabel alloc] init];
-    self.messageLabel.font = [UIFont systemFontOfSize:12];
+    self.messageLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
     self.messageLabel.textColor = [UIColor secondaryLabelColor];
     self.messageLabel.numberOfLines = 1;
     self.messageLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
@@ -263,7 +263,7 @@ static NSString *PLFormatDuration(NSTimeInterval seconds) {
 
     // ETA："剩余约 1 分 20 秒"
     self.etaLabel = [[UILabel alloc] init];
-    self.etaLabel.font = [UIFont systemFontOfSize:12];
+    self.etaLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
     self.etaLabel.textColor = [UIColor tertiaryLabelColor];
     self.etaLabel.numberOfLines = 1;
     self.etaLabel.hidden = YES;
@@ -547,7 +547,7 @@ static __weak PLTaskProgressViewController *PLTaskProgressActiveInstance = nil;
 
     self.titleLabel = [[UILabel alloc] init];
     self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+    self.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle3];
     self.titleLabel.textColor = [UIColor labelColor];
     self.titleLabel.textAlignment = NSTextAlignmentCenter;
     self.titleLabel.numberOfLines = 0;
@@ -555,7 +555,7 @@ static __weak PLTaskProgressViewController *PLTaskProgressActiveInstance = nil;
 
     self.subtitleLabel = [[UILabel alloc] init];
     self.subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.subtitleLabel.font = [UIFont systemFontOfSize:13];
+    self.subtitleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.subtitleLabel.textColor = [UIColor secondaryLabelColor];
     self.subtitleLabel.textAlignment = NSTextAlignmentCenter;
     self.subtitleLabel.numberOfLines = 1;
@@ -590,7 +590,7 @@ static __weak PLTaskProgressViewController *PLTaskProgressActiveInstance = nil;
 - (void)setupErrorSection {
     // 失败摘要（多行，始终随失败态显示）
     self.errorSummaryLabel = [[UILabel alloc] init];
-    self.errorSummaryLabel.font = [UIFont systemFontOfSize:13];
+    self.errorSummaryLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.errorSummaryLabel.textColor = [UIColor systemRedColor];
     self.errorSummaryLabel.numberOfLines = 0;
     self.errorSummaryLabel.hidden = YES;
@@ -606,7 +606,7 @@ static __weak PLTaskProgressViewController *PLTaskProgressActiveInstance = nil;
 
     self.errorDetailTitleLabel = [[UILabel alloc] init];
     self.errorDetailTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.errorDetailTitleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    self.errorDetailTitleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.errorDetailTitleLabel.textColor = [UIColor labelColor];
     self.errorDetailTitleLabel.text = PLTaskProgressText(@"taskProgress.errorDetail.title", localize(@"i18n_str_1307", nil));
     [self.errorDetailContainer addSubview:self.errorDetailTitleLabel];
@@ -645,7 +645,7 @@ static __weak PLTaskProgressViewController *PLTaskProgressActiveInstance = nil;
 
     self.totalTitleLabel = [[UILabel alloc] init];
     self.totalTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.totalTitleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    self.totalTitleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.totalTitleLabel.textColor = [UIColor secondaryLabelColor];
     self.totalTitleLabel.text = PLTaskProgressText(@"taskProgress.total.title", localize(@"i18n_str_1308", nil));
     [totalCard addSubview:self.totalTitleLabel];
@@ -751,7 +751,7 @@ static __weak PLTaskProgressViewController *PLTaskProgressActiveInstance = nil;
 
 - (UIButton *)makeFooterButton {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-    button.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    button.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     button.contentEdgeInsets = UIEdgeInsetsMake(8, 14, 8, 14);
     button.layer.cornerRadius = 10.0;
     button.layer.masksToBounds = YES;

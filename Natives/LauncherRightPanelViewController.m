@@ -174,7 +174,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     self.avatarImageView.contentMode = UIViewContentModeScaleAspectFit;
     self.avatarImageView.layer.cornerRadius = 36;
     self.avatarImageView.layer.masksToBounds = YES;
-    self.avatarImageView.backgroundColor = [UIColor colorWithWhite:0.2 alpha:1.0];
+    self.avatarImageView.backgroundColor = [UIColor tertiarySystemFillColor];
     self.avatarImageView.image = [UIImage systemImageNamed:@"person.circle.fill"];
     self.avatarImageView.tintColor = [UIColor systemGrayColor];
     self.avatarImageView.userInteractionEnabled = YES;
@@ -188,7 +188,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     // 用户名标签
     self.usernameLabel = [[UILabel alloc] init];
     self.usernameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.usernameLabel.font = [UIFont boldSystemFontOfSize:16];
+    self.usernameLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCallout];
     self.usernameLabel.textColor = [UIColor labelColor];
     self.usernameLabel.textAlignment = NSTextAlignmentCenter;
     // iPhone 上侧栏宽度更窄，开启字号自适应避免长用户名被截断
@@ -201,7 +201,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     // 版本标签
     self.versionLabel = [[UILabel alloc] init];
     self.versionLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.versionLabel.font = [UIFont systemFontOfSize:13];
+    self.versionLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.versionLabel.textColor = [UIColor secondaryLabelColor];
     self.versionLabel.textAlignment = NSTextAlignmentCenter;
     self.versionLabel.adjustsFontSizeToFitWidth = YES;
@@ -216,7 +216,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     // 进度标签
     self.progressLabel = [[UILabel alloc] init];
     self.progressLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.progressLabel.font = [UIFont systemFontOfSize:12];
+    self.progressLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
     self.progressLabel.textColor = [UIColor secondaryLabelColor];
     self.progressLabel.textAlignment = NSTextAlignmentCenter;
     self.progressLabel.text = @"";
@@ -241,11 +241,11 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     self.downloadCenterButton.translatesAutoresizingMaskIntoConstraints = NO;
     [self.downloadCenterButton setTitle:localize(@"i18n_str_136", nil) forState:UIControlStateNormal];
     [self.downloadCenterButton setTitleColor:[UIColor labelColor] forState:UIControlStateNormal];
-    self.downloadCenterButton.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    self.downloadCenterButton.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
     self.downloadCenterButton.titleLabel.adjustsFontSizeToFitWidth = YES;
     self.downloadCenterButton.titleLabel.minimumScaleFactor = 0.7;
     self.downloadCenterButton.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-    self.downloadCenterButton.backgroundColor = [UIColor colorWithWhite:0.2 alpha:1.0];
+    self.downloadCenterButton.backgroundColor = [UIColor tertiarySystemFillColor];
     self.downloadCenterButton.layer.cornerRadius = 10;
     self.downloadCenterButton.layer.masksToBounds = YES;
     // 左侧下载图标
@@ -293,7 +293,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     self.launchButton.translatesAutoresizingMaskIntoConstraints = NO;
     [self.launchButton setTitle:localize(@"i18n_str_412", nil) forState:UIControlStateNormal];
     [self.launchButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    self.launchButton.titleLabel.font = [UIFont boldSystemFontOfSize:18];
+    self.launchButton.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleTitle3];
     // iPhone 右侧面板更窄：标题字号自适应，避免"下载中..."等长文案被截断
     self.launchButton.titleLabel.adjustsFontSizeToFitWidth = YES;
     self.launchButton.titleLabel.minimumScaleFactor = 0.6;
@@ -320,7 +320,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     // JIT 状态指示标签（位于启动游戏按钮上方）
     self.jitStatusLabel = [[UILabel alloc] init];
     self.jitStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.jitStatusLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+    self.jitStatusLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption2];
     self.jitStatusLabel.textAlignment = NSTextAlignmentCenter;
     self.jitStatusLabel.layer.cornerRadius = 8;
     self.jitStatusLabel.layer.masksToBounds = YES;
@@ -332,11 +332,11 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     self.manageVersionBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [self.manageVersionBtn setTitle:localize(@"i18n_str_38", nil) forState:UIControlStateNormal];
     [self.manageVersionBtn setTitleColor:[UIColor labelColor] forState:UIControlStateNormal];
-    [self.manageVersionBtn.titleLabel setFont:[UIFont systemFontOfSize:14 weight:UIFontWeightMedium]];
+    [self.manageVersionBtn.titleLabel setFont:[UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline]];
     self.manageVersionBtn.titleLabel.adjustsFontSizeToFitWidth = YES;
     self.manageVersionBtn.titleLabel.minimumScaleFactor = 0.7;
     self.manageVersionBtn.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-    self.manageVersionBtn.backgroundColor = [UIColor colorWithWhite:0.2 alpha:1.0];
+    self.manageVersionBtn.backgroundColor = [UIColor tertiarySystemFillColor];
     self.manageVersionBtn.layer.cornerRadius = 10;
     [self.manageVersionBtn addTarget:self action:@selector(showVersionPicker) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.manageVersionBtn];
@@ -349,7 +349,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     self.executeJarBtn.titleLabel.adjustsFontSizeToFitWidth = YES;
     self.executeJarBtn.titleLabel.minimumScaleFactor = 0.7;
     self.executeJarBtn.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-    self.executeJarBtn.backgroundColor = [UIColor colorWithWhite:0.2 alpha:1.0];
+    self.executeJarBtn.backgroundColor = [UIColor tertiarySystemFillColor];
     self.executeJarBtn.layer.cornerRadius = 10;
     [self.executeJarBtn addTarget:self action:@selector(executeJar) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.executeJarBtn];
@@ -689,12 +689,12 @@ static void *ProgressObserverContext = &ProgressObserverContext;
     BOOL enabled = isJITEnabled(NO);
     if (enabled) {
         self.jitStatusLabel.text = localize(@"i18n_str_421", nil);
-        self.jitStatusLabel.textColor = [UIColor colorWithRed:0.2 green:0.7 blue:0.3 alpha:1.0];
-        self.jitStatusLabel.backgroundColor = [[UIColor colorWithRed:0.2 green:0.7 blue:0.3 alpha:1.0] colorWithAlphaComponent:0.15];
+        self.jitStatusLabel.textColor = [UIColor systemGreenColor];
+        self.jitStatusLabel.backgroundColor = [[UIColor systemGreenColor] colorWithAlphaComponent:0.15];
     } else {
         self.jitStatusLabel.text = localize(@"i18n_str_422", nil);
-        self.jitStatusLabel.textColor = [UIColor colorWithRed:0.9 green:0.4 blue:0.3 alpha:1.0];
-        self.jitStatusLabel.backgroundColor = [[UIColor colorWithRed:0.9 green:0.4 blue:0.3 alpha:1.0] colorWithAlphaComponent:0.15];
+        self.jitStatusLabel.textColor = [UIColor systemRedColor];
+        self.jitStatusLabel.backgroundColor = [[UIColor systemRedColor] colorWithAlphaComponent:0.15];
     }
 }
 

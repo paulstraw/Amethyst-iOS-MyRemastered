@@ -50,11 +50,11 @@ static NSString * const kResourceCardDefaultIcon = @"doc.fill";
         self.layer.shadowOffset = CGSizeMake(0, 2);
 
         // ----- 卡片本体 = contentView：半透明基底 + 12pt continuous 圆角 + 0.5pt 描边，裁圆角 -----
-        self.contentView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
+        self.contentView.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
         self.contentView.layer.cornerRadius = 12.0;
         self.contentView.layer.cornerCurve = kCACornerCurveContinuous;
         self.contentView.layer.borderWidth = 0.5;
-        self.contentView.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.10].CGColor;
+        self.contentView.layer.borderColor = [UIColor separatorColor].CGColor;
         self.contentView.layer.masksToBounds = YES;
 
         [self createSubviews];
@@ -94,7 +94,7 @@ static NSString * const kResourceCardDefaultIcon = @"doc.fill";
 
     // 中部文字
     _nameLabel = [[UILabel alloc] init];
-    _nameLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+    _nameLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     _nameLabel.textColor = [UIColor labelColor];
     _nameLabel.adjustsFontSizeToFitWidth = YES;
     _nameLabel.minimumScaleFactor = 0.7;
@@ -103,7 +103,7 @@ static NSString * const kResourceCardDefaultIcon = @"doc.fill";
     [_nameLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
 
     _subtitleLabel = [[UILabel alloc] init];
-    _subtitleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
+    _subtitleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
     _subtitleLabel.textColor = [UIColor secondaryLabelColor];
     _subtitleLabel.adjustsFontSizeToFitWidth = YES;
     _subtitleLabel.minimumScaleFactor = 0.7;
@@ -112,7 +112,7 @@ static NSString * const kResourceCardDefaultIcon = @"doc.fill";
     _subtitleLabel.hidden = YES;
 
     _detailLabel = [[UILabel alloc] init];
-    _detailLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightRegular];
+    _detailLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption2];
     _detailLabel.textColor = [UIColor tertiaryLabelColor];
     _detailLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_detailLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
@@ -284,7 +284,7 @@ static NSString * const kResourceCardDefaultIcon = @"doc.fill";
         self.selectionTintView.hidden = NO;
     } else {
         // 默认态：0.5pt 白 0.10 描边（Air-Design 5.3 边框规格）
-        self.contentView.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.10].CGColor;
+        self.contentView.layer.borderColor = [UIColor separatorColor].CGColor;
         self.contentView.layer.borderWidth = 0.5;
         self.selectionTintView.hidden = YES;
     }
