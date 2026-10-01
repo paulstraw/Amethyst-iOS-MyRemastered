@@ -75,12 +75,13 @@
         // 这样卡片背景会随用户的背景设置自适应，不再过于透明。
         self.cardContainer = [[UIView alloc] init];
         self.cardContainer.translatesAutoresizingMaskIntoConstraints = NO;
-        self.cardContainer.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
+        self.cardContainer.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor]; // HIG: 系统分组卡面
         self.cardContainer.layer.cornerRadius = 12;
         self.cardContainer.layer.cornerCurve = kCACornerCurveContinuous;
         self.cardContainer.layer.borderWidth = 0.5;
-        self.cardContainer.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.10].CGColor;
-        self.cardContainer.layer.shadowColor = [UIColor blackColor].CGColor;
+        self.cardContainer.layer.borderColor = [UIColor separatorColor].CGColor; // HIG: 系统分隔色
+        self.cardContainer.layer.shadowColor = [UIColor clearColor].CGColor; // HIG: 原生模式不自绘阴影
+    self.cardContainer.layer.shadowOpacity = 0.0;
         self.cardContainer.layer.shadowOffset = CGSizeMake(0, 2);
         self.cardContainer.layer.shadowOpacity = 0.10;
         self.cardContainer.layer.shadowRadius = 4;
@@ -109,7 +110,7 @@
         // ----- 版本号 -----
         self.versionLabel = [[UILabel alloc] init];
         self.versionLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        self.versionLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+        self.versionLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline]; // HIG: Dynamic Type
         self.versionLabel.textColor = [UIColor labelColor];
         self.versionLabel.adjustsFontSizeToFitWidth = YES;
         self.versionLabel.minimumScaleFactor = 0.7;
@@ -125,7 +126,7 @@
         // 确保任何情况下文字都不会被截断成"……"。
         self.typeLabel = [[InsetTypeLabel alloc] init];
         self.typeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        self.typeLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
+        self.typeLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption2]; // HIG: Dynamic Type
         self.typeLabel.textColor = [UIColor whiteColor];
         self.typeLabel.textAlignment = NSTextAlignmentCenter;
         self.typeLabel.adjustsFontSizeToFitWidth = YES;
@@ -153,7 +154,7 @@
         // ----- 日期 -----
         self.dateLabel = [[UILabel alloc] init];
         self.dateLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        self.dateLabel.font = [UIFont systemFontOfSize:12];
+        self.dateLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline]; // HIG: Dynamic Type
         self.dateLabel.textColor = [UIColor secondaryLabelColor];
         self.dateLabel.adjustsFontSizeToFitWidth = YES;
         self.dateLabel.minimumScaleFactor = 0.7;

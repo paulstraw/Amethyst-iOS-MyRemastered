@@ -1231,8 +1231,8 @@
         self.tableView.backgroundView = nil;
         
         // Make separator visible on background
-        self.tableView.separatorEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
-        self.tableView.separatorColor = [UIColor colorWithWhite:1.0 alpha:0.2];
+        self.tableView.separatorEffect = nil; // HIG: 交给系统分隔线
+        self.tableView.separatorColor = [UIColor separatorColor]; // HIG: 系统分隔色
     }
     
     if (self.navigationController == nil) {
@@ -1292,17 +1292,18 @@
     searchBar.tintColor = accentColor();
     searchBar.backgroundImage = [UIImage new]; // 去掉默认背景
     if (@available(iOS 13.0, *)) {
-        searchBar.searchTextField.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
+        searchBar.searchTextField.backgroundColor = [UIColor tertiarySystemFillColor]; // HIG: 系统填充色
     }
 
     // ===== Hero 卡片（L3 大卡片：16pt 圆角 + 半透明背景 + 毛玻璃 + 浅边框 + 中阴影）=====
     UIView *heroCard = [[UIView alloc] init];
-    heroCard.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.14]; // surface-bright
+    heroCard.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor]; // HIG: 系统分组卡面
     heroCard.layer.cornerRadius = 16;
     heroCard.layer.cornerCurve = kCACornerCurveContinuous;
     heroCard.layer.borderWidth = 0.5;
-    heroCard.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.10].CGColor;
-    heroCard.layer.shadowColor = [UIColor blackColor].CGColor;
+    heroCard.layer.borderColor = [UIColor separatorColor].CGColor; // HIG: 系统分隔色
+    heroCard.layer.shadowColor = [UIColor clearColor].CGColor; // HIG: 不自绘阴影
+    heroCard.layer.shadowOpacity = 0.0;
     heroCard.layer.shadowOpacity = 0.12;
     heroCard.layer.shadowRadius = 8;
     heroCard.layer.shadowOffset = CGSizeMake(0, 3);
@@ -1322,7 +1323,7 @@
     // 标题（App 名，17pt bold，labelColor）
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.text = [self appName];
-    titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightBold];
+    titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline]; // HIG: Dynamic Type
     titleLabel.textColor = [UIColor labelColor];
     titleLabel.adjustsFontSizeToFitWidth = YES;
     titleLabel.minimumScaleFactor = 0.8;
@@ -1335,7 +1336,7 @@
     NSString *systemVersion = UIDevice.currentDevice.systemVersion ?: @"";
     NSString *subtitle = [NSString stringWithFormat:@"v%@\n%@ · iOS %@", appVersion, deviceName, systemVersion];
     subtitleLabel.text = subtitle;
-    subtitleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
+    subtitleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1]; // HIG: Dynamic Type
     subtitleLabel.textColor = [UIColor secondaryLabelColor];
     subtitleLabel.numberOfLines = 0;
     [heroCard addSubview:subtitleLabel];
@@ -1641,14 +1642,14 @@
         // Set semi-transparent dark background for cells
         [[BackgroundManager sharedManager] applyEffectToCell:cell];
 
-        // Set white text for better visibility on dark background
-        cell.textLabel.textColor = [UIColor whiteColor];
-        cell.textLabel.shadowColor = [UIColor blackColor];
+        // HIG: 用语义色,浅色/深色都自动正确(原来写死白字在浅色下=白底白字不可见)
+        cell.textLabel.textColor = [UIColor labelColor];
+        cell.textLabel.shadowColor = [UIColor clearColor];
         cell.textLabel.shadowOffset = CGSizeMake(0, 1);
 
         // Detail text light gray
-        cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.8 alpha:1.0];
-        cell.detailTextLabel.shadowColor = [UIColor blackColor];
+        cell.detailTextLabel.textColor = [UIColor secondaryLabelColor]; // HIG: 语义色
+        cell.detailTextLabel.shadowColor = [UIColor clearColor];
         cell.detailTextLabel.shadowOffset = CGSizeMake(0, 1);
 
         // Tint color for icons and accessories：使用主题强调色（accentColor）
@@ -1673,16 +1674,16 @@
             // Style text fields
             if ([subview isKindOfClass:[UITextField class]]) {
                 UITextField *textField = (UITextField *)subview;
-                textField.textColor = [UIColor whiteColor];
-                textField.backgroundColor = [UIColor colorWithWhite:0.2 alpha:0.6];
+                textField.textColor = [UIColor labelColor]; // HIG: 语义色
+                textField.backgroundColor = [UIColor tertiarySystemFillColor];
                 textField.layer.cornerRadius = 8;
             }
 
             // Style labels
             if ([subview isKindOfClass:[UILabel class]]) {
                 UILabel *label = (UILabel *)subview;
-                label.textColor = [UIColor whiteColor];
-                label.shadowColor = [UIColor blackColor];
+                label.textColor = [UIColor labelColor]; // HIG: 语义色
+                label.shadowColor = [UIColor clearColor];
                 label.shadowOffset = CGSizeMake(0, 1);
             }
         }
@@ -1690,7 +1691,7 @@
         // Style the picker label if exists
         if (cell.accessoryView && [cell.accessoryView isKindOfClass:[UILabel class]]) {
             UILabel *pickerLabel = (UILabel *)cell.accessoryView;
-            pickerLabel.textColor = [UIColor colorWithWhite:0.8 alpha:1.0];
+            pickerLabel.textColor = [UIColor secondaryLabelColor]; // HIG: 语义色
         }
     } else {
         // Reset to default when no background
@@ -1848,8 +1849,8 @@
     if ([[BackgroundManager sharedManager] hasBackground]) {
         if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
             UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
-            header.textLabel.textColor = [UIColor whiteColor];
-            header.textLabel.shadowColor = [UIColor blackColor];
+            header.textLabel.textColor = [UIColor secondaryLabelColor]; // HIG: 分组头用次要色
+            header.textLabel.shadowColor = [UIColor clearColor];
             header.textLabel.shadowOffset = CGSizeMake(0, 1);
             header.backgroundView = [[UIView alloc] init];
             header.backgroundView.backgroundColor = [UIColor clearColor];
@@ -1887,8 +1888,8 @@
     if ([[BackgroundManager sharedManager] hasBackground]) {
         if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
             UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *)view;
-            footer.textLabel.textColor = [UIColor colorWithWhite:0.8 alpha:1.0];
-            footer.textLabel.shadowColor = [UIColor blackColor];
+            footer.textLabel.textColor = [UIColor secondaryLabelColor]; // HIG: 脚注用次要色
+            footer.textLabel.shadowColor = [UIColor clearColor];
             footer.textLabel.shadowOffset = CGSizeMake(0, 1);
             footer.backgroundView = [[UIView alloc] init];
             footer.backgroundView.backgroundColor = [UIColor clearColor];
