@@ -28,13 +28,39 @@ jobs:
           - platform: 2
             platform_name: ios
 
-    runs-on: macos-14
+    # ★ 换 runner:macos-14 上不了 Xcode 26(它要求 macOS 15.5+),
+    #   而 iOS 26 的液态玻璃只有用 iOS 26 SDK 构建才会生效。
+    #   找不到 Xcode 26 时下面的步骤会回退到 15.4,构建仍可用(只是没有新外观)。
+    runs-on: macos-15
 
     steps:
-      - name: Select Xcode 15.4
+      - name: Select Xcode (prefer 26+ for iOS 26 Liquid Glass, fallback 15.4)
         run: |
-          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          echo "== 可用 Xcode =="
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+          echo "== 默认 =="
           xcodebuild -version || true
+          # 选最新的 Xcode ≥ 26(液态玻璃需要 iOS 26 SDK);找不到就退 15.4。
+          PICK=""
+          for app in $(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V -r); do
+            PICK="$app"; break
+          done
+          if [ -z "$PICK" ]; then
+            for app in $(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V -r); do
+              v=$(basename "$app" | sed -E 's/Xcode_?([0-9]+).*/\1/')
+              if [ -n "$v" ] && [ "$v" -ge 26 ] 2>/dev/null; then PICK="$app"; break; fi
+            done
+          fi
+          if [ -n "$PICK" ]; then
+            sudo xcode-select -s "$PICK/Contents/Developer"
+            echo "★ 选用 $PICK"
+          else
+            sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+            echo "★ 未找到 Xcode 26,回退 15.4(本包不含 iOS 26 新外观)"
+          fi
+          xcodebuild -version || true
+          SDK=$(xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || echo '?')
+          echo "★ iPhoneOS SDK = $SDK"
 
       - name: Install GNU Make
         run: |
@@ -79,7 +105,7 @@ jobs:
             Natives/build/mobileglues/3rdparty
             Natives/build/sfpew
             Natives/external/LTW/ltw/src/main/tinywrapper
-          key: dep3rd-${{ runner.os }}-xcode15.4-sdk17.5-${{ hashFiles('Makefile') }}
+          key: dep3rd-${{ runner.os }}-xcodeauto-${{ hashFiles('Makefile') }}
           restore-keys: |
             dep3rd-${{ runner.os }}-
 
@@ -90,7 +116,7 @@ jobs:
             Natives/build/java_runtimes
             Natives/build/assets
             ~/Library/Caches/Amethyst
-          key: jre-assets-${{ runner.os }}-xcode15.4-sdk17.5-${{ hashFiles('Makefile') }}
+          key: jre-assets-${{ runner.os }}-xcodeauto-${{ hashFiles('Makefile') }}
           restore-keys: |
             jre-assets-${{ runner.os }}-
 
