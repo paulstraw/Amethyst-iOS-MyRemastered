@@ -929,10 +929,17 @@ static NSString *festivalGreeting(void) {
         BOOL isCompact = (firstTile.tileSize == HomeTileSizeCompact);
         CGFloat height = [weakSelf heightForTileConfig:firstTile];
         
+        // ★ [设计稿对齐] 网格列数随可用宽度变化:竖屏 2 列、横屏(宽) 3 列。
+        //   原实现把宽度写死 0.5(恒 2 列),在 iPad/横屏下显得很空。
+        CGFloat availW = env.container.effectiveContentSize.width;
+        NSInteger cols = (availW >= 820.0) ? 3 : 2;      // 820pt 约为 iPhone 横屏/ iPad 竖屏量级
+        if (cols > (NSInteger)sectionTiles.count) { cols = MAX((NSInteger)1, (NSInteger)sectionTiles.count); }
+        CGFloat itemFrac = 1.0 / (CGFloat)cols;
+
         if (isCompact && sectionTiles.count >= 2) {
-            // 双列紧凑布局
+            // 多列紧凑布局(列数随宽度)
             NSCollectionLayoutSize *itemSize = [NSCollectionLayoutSize
-                sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:0.5]
+                sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:itemFrac]
                 heightDimension:[NSCollectionLayoutDimension fractionalHeightDimension:1.0]];
             NSCollectionLayoutItem *item = [NSCollectionLayoutItem itemWithLayoutSize:itemSize];
             item.contentInsets = NSDirectionalEdgeInsetsMake(0, 5, 0, 5);
@@ -940,8 +947,13 @@ static NSString *festivalGreeting(void) {
             NSCollectionLayoutSize *groupSize = [NSCollectionLayoutSize
                 sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:1.0]
                 heightDimension:[NSCollectionLayoutDimension absoluteDimension:height]];
-            NSCollectionLayoutGroup *group = [NSCollectionLayoutGroup horizontalGroupWithLayoutSize:groupSize subitems:@[item]];
-            
+            // ★ 一行放 cols 个(原实现 subitems:@[item] 恒 1 个 ⇒ 永远只有 1 列)。
+            //   用 subitems 数组而非 iOS 16+ 的 repeatingSubitem:count:,以保持部署目标 14.0 兼容。
+            NSMutableArray<NSCollectionLayoutItem *> *subitems = [NSMutableArray arrayWithCapacity:(NSUInteger)cols];
+            for (NSInteger i = 0; i < cols; i++) { [subitems addObject:item]; }
+            NSCollectionLayoutGroup *group = [NSCollectionLayoutGroup horizontalGroupWithLayoutSize:groupSize
+                                                                                           subitems:subitems];
+
             NSCollectionLayoutSection *section = [NSCollectionLayoutSection sectionWithGroup:group];
             section.contentInsets = NSDirectionalEdgeInsetsMake(5, 15, 5, 15);
             section.interGroupSpacing = 10;
