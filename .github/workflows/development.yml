@@ -60,7 +60,16 @@ jobs:
           fi
           xcodebuild -version || true
           SDK=$(xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || echo '?')
+          SDKPATH_REAL=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || echo '')
           echo "★ iPhoneOS SDK = $SDK"
+          echo "★ SDKPATH = $SDKPATH_REAL"
+          # ★ 关键:Makefile 里是 SDKPATH ?= ...(?= 不覆盖已有值),
+          #   若环境里带着旧的 SDKPATH,或者 CMake 缓存了旧 CMAKE_OSX_SYSROOT,
+          #   就会【用旧 SDK 编译】—— 那样打包出来的 App 拿不到 iOS 26 新外观。
+          #   这里显式写入 GITHUB_ENV,强制后续所有步骤用同一个 SDK。
+          echo "SDKPATH=$SDKPATH_REAL" >> "$GITHUB_ENV"
+          echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+          echo "★ 已写入 GITHUB_ENV:SDKPATH / DEVELOPER_DIR"
 
       - name: Install GNU Make
         run: |
@@ -133,6 +142,16 @@ jobs:
             fi
           done
           echo "====================="
+      - name: Purge stale CMake/build caches (force re-resolve with the selected SDK)
+        run: |
+          # ★ 旧构建缓存会记住 CMAKE_OSX_SYSROOT。换 Xcode/SDK 后必须让它重新解析,
+          #   否则 CMake 继续沿用旧 SDK 编译 —— 产物就不会采用 iOS 26 的外观
+          #   (证据:上一版产物 LC_BUILD_VERSION 里 SDK=16.0,而选中的是 26.3)。
+          rm -rf build Natives/build JavaApp/build 2>/dev/null || true
+          echo "★ 已清理 build 目录 ⇒ 下次 configure 会按当前 Xcode 重新探测 SDK"
+          echo "★ 当前 SDKPATH=${SDKPATH:-未设置}"
+          echo "★ DEVELOPER_DIR=${DEVELOPER_DIR:-未设置}"
+
       - name: Build for ${{ matrix.platform_name }}
         env:
           IPHONEOS_DEPLOYMENT_TARGET: 14.0
@@ -152,6 +171,31 @@ jobs:
 
           else
             gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }}
+          fi
+
+      - name: Verify the built binary really used the iOS 26 SDK
+        run: |
+          # ★ 自证:读主二进制 LC_BUILD_VERSION 的 sdk 字段。26.x ⇒ 真用了 26 SDK。
+          BIN=$(find . -path '*Payload/*.app' -type d 2>/dev/null | head -1)
+          APP=$(find . -name 'AngelAuraAmethyst' -type f 2>/dev/null | head -1)
+          echo "★ app=$BIN bin=$APP"
+          if [ -n "$APP" ]; then
+            python3 - "$APP" <<'PY'
+          import struct, sys
+          b = open(sys.argv[1], 'rb').read()
+          if b[:4] != b'\xcf\xfa\xed\xfe':
+              print('★ 不是 Mach-O'); raise SystemExit
+          n = struct.unpack_from('<I', b, 16)[0]; off = 32
+          for _ in range(n):
+              cmd, cs = struct.unpack_from('<II', b, off)
+              if cmd == 0x32:
+                  plat, minos, sdk = struct.unpack_from('<III', b, off+8)
+                  f = lambda v: '%d.%d.%d' % (v>>16&0xff, v>>8&0xff, v&0xff)
+                  print('★★ LC_BUILD_VERSION: minOS=%s  SDK=%s' % (f(minos), f(sdk)))
+                  print('★★ SDK>=26 ⇒ 液态玻璃生效; 若显示 16/18 ⇒ SDK 没用上 26,需修构建')
+                  break
+              off += cs
+          PY
           fi
 
       - name: Upload regular ipa
