@@ -917,7 +917,7 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 }
 
 - (void)setupModTableView {
-    self.modTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.modTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
     self.modTableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.modTableView.backgroundColor = [UIColor clearColor];
     self.modTableView.dataSource = self;
@@ -925,6 +925,7 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
     // FCL view_installer_item.xml：item 高度 ~46dp + marginBottom 10dp
     // 这里 54pt（图标 26pt + 双行文字 + 上下 padding 4pt），每屏显示更多
     self.modTableView.rowHeight = 54;
+    self.modTableView.estimatedRowHeight = 54;
     self.modTableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.modTableView registerClass:[ModernAssetCell class] forCellReuseIdentifier:@"ModCell"];
     self.modTableView.hidden = YES;
@@ -946,13 +947,14 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 }
 
 - (void)setupShaderTableView {
-    self.shaderTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.shaderTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
     self.shaderTableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.shaderTableView.backgroundColor = [UIColor clearColor];
     self.shaderTableView.dataSource = self;
     self.shaderTableView.delegate = self;
     // FCL 风格扁平条目：行高 54pt
     self.shaderTableView.rowHeight = 54;
+    self.shaderTableView.estimatedRowHeight = 54;
     self.shaderTableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.shaderTableView registerClass:[ModernAssetCell class] forCellReuseIdentifier:@"ShaderCell"];
     self.shaderTableView.hidden = YES;
@@ -972,13 +974,14 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 }
 
 - (void)setupModpackTableView {
-    self.modpackTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.modpackTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
     self.modpackTableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.modpackTableView.backgroundColor = [UIColor clearColor];
     self.modpackTableView.dataSource = self;
     self.modpackTableView.delegate = self;
     // FCL 风格扁平条目：行高 54pt
     self.modpackTableView.rowHeight = 54;
+    self.modpackTableView.estimatedRowHeight = 54;
     self.modpackTableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.modpackTableView registerClass:[ModernAssetCell class] forCellReuseIdentifier:@"ModpackCell"];
     self.modpackTableView.hidden = YES;
@@ -998,13 +1001,14 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 }
 
 - (void)setupResourcepackTableView {
-    self.resourcepackTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.resourcepackTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
     self.resourcepackTableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.resourcepackTableView.backgroundColor = [UIColor clearColor];
     self.resourcepackTableView.dataSource = self;
     self.resourcepackTableView.delegate = self;
     // FCL 风格扁平条目：行高 54pt
     self.resourcepackTableView.rowHeight = 54;
+    self.resourcepackTableView.estimatedRowHeight = 54;
     self.resourcepackTableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.resourcepackTableView registerClass:[ModernAssetCell class] forCellReuseIdentifier:@"ResourcepackCell"];
     self.resourcepackTableView.hidden = YES;
@@ -1024,13 +1028,14 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 }
 
 - (void)setupDatapackTableView {
-    self.datapackTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.datapackTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
     self.datapackTableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.datapackTableView.backgroundColor = [UIColor clearColor];
     self.datapackTableView.dataSource = self;
     self.datapackTableView.delegate = self;
     // FCL 风格扁平条目：行高 54pt
     self.datapackTableView.rowHeight = 54;
+    self.datapackTableView.estimatedRowHeight = 54;
     self.datapackTableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.datapackTableView registerClass:[ModernAssetCell class] forCellReuseIdentifier:@"DatapackCell"];
     self.datapackTableView.hidden = YES;
@@ -1050,13 +1055,14 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 }
 
 - (void)setupWorldTableView {
-    self.worldTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.worldTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
     self.worldTableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.worldTableView.backgroundColor = [UIColor clearColor];
     self.worldTableView.dataSource = self;
     self.worldTableView.delegate = self;
     // FCL 风格扁平条目：行高 54pt
     self.worldTableView.rowHeight = 54;
+    self.worldTableView.estimatedRowHeight = 54;
     self.worldTableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.worldTableView registerClass:[ModernAssetCell class] forCellReuseIdentifier:@"WorldCell"];
     self.worldTableView.hidden = YES;
