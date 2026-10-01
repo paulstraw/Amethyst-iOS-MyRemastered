@@ -1,12 +1,10 @@
 //
 //  UIKit+GlassSurface.h —— 液态玻璃外观助手(纯头文件,不新增 .m ⇒ 不改 CMake 源列表)
 //
-//  ★ 关键:CI 用的是 Xcode 15.4(iOS 17 SDK)⇒ UIGlassEffect(iOS 26)在该 SDK 里【没有声明】。
-//    因此这里【不用编译期符号】,改用 NSClassFromString + objc_msgSend 的运行时调用:
-//      · 用旧 SDK 也能编译通过;
-//      · 真机是 iOS 26/27 ⇒ 运行时能找到 UIGlassEffect ⇒ 玻璃真实生效;
-//      · 系统更旧/类不存在 ⇒ 回退到原来的系统材质,行为不变。
-//  颜色/材质全走系统语义 ⇒ 深浅色自动正确,不写死任何颜色。
+//  ★ CI 用 Xcode 15.4(iOS 17 SDK)⇒ UIGlassEffect(iOS 26)在 SDK 里无声明,
+//    所以这里【不用编译期符号】,走 NSClassFromString + objc_msgSend 的运行时调用。
+//  ★ 带探针:每次第一次解析材质时打一行日志,明确告知"玻璃生效"还是"回退常规材质",
+//    免得再靠肉眼猜。日志 tag:[glass]
 //
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
@@ -19,18 +17,40 @@ typedef NS_ENUM(NSInteger, AmeGlassRadius) {
     AmeGlassRadiusPanel = 26,
 };
 
-/// 统一材质:iOS 26+ = 液态玻璃;旧系统 = fallbackStyle 对应的系统材质。
+/// 统一材质:iOS 26+ 尝试液态玻璃;失败/旧系统回退 fallbackStyle。
 static inline UIVisualEffect *AmeGlassEffect(UIBlurEffectStyle fallbackStyle) {
     static Class glassCls = Nil;
+    static BOOL probed = NO;
+    static BOOL glassOK = NO;
+    static NSString *probeWhy = nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        glassCls = NSClassFromString(@"UIGlassEffect");   // iOS 26 才有;旧系统为 Nil
+        glassCls = NSClassFromString(@"UIGlassEffect");
+        if (glassCls == Nil) {
+            probeWhy = @"UIGlassEffect 类不存在(系统 < iOS 26 或未链接)";
+        } else {
+            SEL sel = @selector(effectWithStyle:);
+            if ([glassCls respondsToSelector:sel]) {
+                id g = ((id (*)(id, SEL, NSInteger))objc_msgSend)(glassCls, sel, 0);
+                if (g != nil && [g isKindOfClass:[UIVisualEffect class]]) {
+                    glassOK = YES;
+                    probeWhy = [NSString stringWithFormat:@"UIGlassEffect 生效(sdk=%s)", __VERSION__];
+                } else {
+                    probeWhy = @"UIGlassEffect.effectWithStyle: 返回空/类型不符 ⇒ 回退";
+                }
+            } else {
+                probeWhy = @"UIGlassEffect 无 effectWithStyle: 方法 ⇒ 回退";
+            }
+        }
+        NSLog(@"[glass] 材质解析:%@ ⇒ %@", glassOK ? @"玻璃" : @"常规材质(回退)", probeWhy ?: @"?");
+        probed = YES;
     });
-    if (glassCls != Nil && [glassCls respondsToSelector:@selector(effectWithStyle:)]) {
-        // UIGlassEffectStyleRegular == 0;用 objc_msgSend 调用以避免编译期依赖该符号
-        id glass = ((id (*)(id, SEL, NSInteger))objc_msgSend)(glassCls, @selector(effectWithStyle:), 0);
-        if (glass != nil && [glass isKindOfClass:[UIVisualEffect class]]) {
-            return (UIVisualEffect *)glass;
+    (void)probed;
+
+    if (glassOK && glassCls != Nil) {
+        id g = ((id (*)(id, SEL, NSInteger))objc_msgSend)(glassCls, @selector(effectWithStyle:), 0);
+        if (g != nil && [g isKindOfClass:[UIVisualEffect class]]) {
+            return (UIVisualEffect *)g;
         }
     }
     return [UIBlurEffect effectWithStyle:fallbackStyle];
@@ -61,7 +81,7 @@ static inline UIVisualEffectView * _Nullable AmeApplyGlassSurface(UIView *view, 
     return blur;
 }
 
-/// 灵动岛/刘海安全区:横屏有岛那侧 ≈59pt、另一侧 0;竖屏顶部由系统 top 决定。
+/// 灵动岛/刘海安全区(横屏有岛那侧 ≈59pt、另一侧 0;iPad 两者皆 0)
 static inline UIEdgeInsets AmeSafeInsets(UIView *view) {
     if (@available(iOS 11.0, *)) { return view.safeAreaInsets; }
     return UIEdgeInsetsZero;
