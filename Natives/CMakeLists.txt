@@ -16,7 +16,11 @@ configure_file(${CMAKE_CURRENT_LIST_DIR}/config.h.in ${CMAKE_CURRENT_LIST_DIR}/c
 #   为什么必须这么做:原来只写 "-target arm64-apple-ios"(不带 SDK 版本),
 #   clang 会把 SDK 记成默认值 ⇒ 产物主二进制 LC_BUILD_VERSION 的 sdk 字段不是实际 SDK
 #   ⇒ 系统按 SDK 判定"该应用未用 iOS 26 SDK 构建" ⇒ 不采用 iOS 26 新外观(拿不到液态玻璃)。
-#   带上 SDK 版本后,产物会如实记录 sdk=26.x,系统才会给新外观。
+#
+#   注:iOS 的 target triple 里【不能】带 SDK 版本(clang 会报
+#   "version 'ios26.2' in target triple ... is invalid"),SDK 由 -isysroot 指向的
+#   SDK 决定。因此这里只写 minOS(ios14.0),并显式给出 -miphoneos-version-min=14.0,
+#   让 clang 把 SDK 版本如实记录为 -isysroot 所指 SDK(CI 里已锁 Xcode 26.3 / iPhoneOS26.2)。
 if(CMAKE_OSX_SYSROOT)
   get_filename_component(AME_SDK_NAME "${CMAKE_OSX_SYSROOT}" NAME)      # iPhoneOS26.2.sdk
   string(REGEX MATCH "iPhoneOS([0-9]+\.[0-9]+)" _m "${AME_SDK_NAME}")   # 取版本
@@ -29,7 +33,7 @@ if(NOT AME_SDK_VERSION)
 endif()
 message(STATUS "★ AME_SDK_VERSION = ${AME_SDK_VERSION} (from ${CMAKE_OSX_SYSROOT})")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -target arm64-apple-ios14.0-ios${AME_SDK_VERSION} -mcpu=apple-a8 -fcommon -fobjc-arc -ObjC -F'${CMAKE_OSX_SYSROOT}/System/Cryptexes/OS/System/Library/Frameworks'")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -target arm64-apple-ios14.0 -miphoneos-version-min=14.0 -mcpu=apple-a8 -fcommon -fobjc-arc -ObjC -F'${CMAKE_OSX_SYSROOT}/System/Cryptexes/OS/System/Library/Frameworks'")
 set(CMAKE_C_FLAGS_DEBUG "-funwind-tables -g")
 
 if("${CMAKE_HOST_SYSTEM_NAME}" MATCHES "Linux|^GNU$|Android")
