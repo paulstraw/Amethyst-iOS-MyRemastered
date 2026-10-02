@@ -289,9 +289,12 @@ static NSString *currentImportTaskId;
     // 透明背景：不再使用毛玻璃，可看到背景图
     header.backgroundView = nil;
     if ([[BackgroundManager sharedManager] hasBackground]) {
-        header.textLabel.textColor = [UIColor whiteColor];
-        header.textLabel.shadowColor = [UIColor blackColor];
-        header.textLabel.shadowOffset = CGSizeMake(0, 1);
+        // [P8-dark] 文字色跟随壁纸明暗：深壁纸=白+黑影(historic)；浅壁纸=labelColor、去阴影
+        BackgroundManager *bgManager = [BackgroundManager sharedManager];
+        BOOL bgIsDark = bgManager.backgroundIsDark;
+        header.textLabel.textColor = [bgManager contentTextColorForBackground];
+        header.textLabel.shadowColor = bgIsDark ? [UIColor blackColor] : nil;
+        header.textLabel.shadowOffset = bgIsDark ? CGSizeMake(0, 1) : CGSizeZero;
     } else {
         header.textLabel.textColor = [UIColor labelColor];
         header.textLabel.shadowColor = nil;

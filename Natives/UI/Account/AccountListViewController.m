@@ -191,7 +191,10 @@
     cardView.layer.cornerRadius = 16;
     cardView.layer.cornerCurve = kCACornerCurveContinuous;
     cardView.layer.borderWidth = 0.5;
-    cardView.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.12].CGColor;
+    // [P8-dark] 卡片高光描边跟随壁纸明暗（深=白0.12 historic；浅=暗色，避免浅底白边不可见）
+    cardView.layer.borderColor = [[BackgroundManager sharedManager] backgroundIsDark]
+        ? [[UIColor whiteColor] colorWithAlphaComponent:0.12].CGColor
+        : [[UIColor labelColor] colorWithAlphaComponent:0.12].CGColor;
     cardView.layer.shadowColor = [UIColor blackColor].CGColor;
     cardView.layer.shadowOffset = CGSizeMake(0, 4);
     cardView.layer.shadowOpacity = 0.12;

@@ -227,7 +227,8 @@
             
             UILabel *valueLabel = [cell.contentView viewWithTag:201];
             valueLabel.text = [NSString stringWithFormat:@"%.0f%%", manager.uiOpacity * 100];
-            valueLabel.textColor = hasBackground ? [UIColor whiteColor] : [UIColor labelColor];
+            // [P8-dark] 数值文字：有壁纸时跟随壁纸明暗（深=白 historic；浅=labelColor）
+            valueLabel.textColor = hasBackground ? [[BackgroundManager sharedManager] contentTextColorForBackground] : [UIColor labelColor];
             self.opacityValueLabel = valueLabel;
             
             cell.textLabel.text = nil;
@@ -270,7 +271,8 @@
             
             UILabel *valueLabel = [cell.contentView viewWithTag:301];
             valueLabel.text = [NSString stringWithFormat:@"%.0f%%", manager.blurIntensity * 100];
-            valueLabel.textColor = hasBackground ? [UIColor whiteColor] : [UIColor labelColor];
+            // [P8-dark] 数值文字：有壁纸时跟随壁纸明暗（深=白 historic；浅=labelColor）
+            valueLabel.textColor = hasBackground ? [[BackgroundManager sharedManager] contentTextColorForBackground] : [UIColor labelColor];
             
             cell.textLabel.text = nil;
             cell.imageView.image = [UIImage systemImageNamed:@"slider.horizontal.3"];
@@ -324,7 +326,8 @@
 - (void)styleCell:(UITableViewCell *)cell hasBackground:(BOOL)hasBackground {
     if (hasBackground) {
         [[BackgroundManager sharedManager] applyEffectToCell:cell];
-        cell.textLabel.textColor = [UIColor whiteColor];
+        // [P8-dark] 文字色跟随壁纸明暗：深=白(historic)；浅=labelColor（否则白字不可读）
+        cell.textLabel.textColor = [[BackgroundManager sharedManager] contentTextColorForBackground];
     } else {
         cell.backgroundColor = [UIColor secondarySystemBackgroundColor];
         cell.textLabel.textColor = [UIColor labelColor];

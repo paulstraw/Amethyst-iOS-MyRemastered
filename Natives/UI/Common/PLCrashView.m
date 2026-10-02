@@ -847,7 +847,9 @@ static NSString *const kGitHubIssuesURL = @"https://github.com/herbrine8403/Amet
     _githubButton = [self createButtonWithTitle:localize(@"crash.github_issue", @"前往 GitHub Issues")
                                            icon:@"link"
                                   backgroundColor:[[UIColor colorWithRed:0.3 green:0.5 blue:0.9 alpha:1.0] colorWithAlphaComponent:0.3]
-                                      textColor:[UIColor whiteColor]
+                                      // [P8-dark] 半透明品牌蓝底（壁纸透出）= 可配色底：浅壁纸改 labelColor 保证可读；
+                                      // 深壁纸 / 无壁纸保持 historic 白字（暗底像素不变）
+                                      textColor:([[BackgroundManager sharedManager] backgroundIsDark] ? [UIColor whiteColor] : [UIColor labelColor])
                                          bold:NO
                                          action:@selector(openGitHubIssues)];
     [container addArrangedSubview:_githubButton];

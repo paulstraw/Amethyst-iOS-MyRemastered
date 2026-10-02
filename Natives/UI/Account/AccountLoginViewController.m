@@ -134,11 +134,16 @@
     self.headerContainer.translatesAutoresizingMaskIntoConstraints = NO;
     [self.cardStack addArrangedSubview:self.headerContainer];
 
+    // [P8-dark] 标题区文字色跟随壁纸明暗（深壁纸=白 historic；浅壁纸=label 系，否则白字不可读）
+    BackgroundManager *bgManager = [BackgroundManager sharedManager];
+    BOOL bgIsDark = bgManager.backgroundIsDark;
+
     self.headerTitleLabel = [[UILabel alloc] init];
     self.headerTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.headerTitleLabel.text = localize(@"i18n_str_17", nil);
     self.headerTitleLabel.font = [UIFont systemFontOfSize:[ScreenUtils sp:26] weight:UIFontWeightBold];
-    self.headerTitleLabel.textColor = [UIColor whiteColor];
+    // [P8-dark] 大标题：深壁纸=白(historic)；浅壁纸=labelColor
+    self.headerTitleLabel.textColor = [bgManager contentTextColorForBackground];
     self.headerTitleLabel.numberOfLines = 1;
     [self.headerContainer addSubview:self.headerTitleLabel];
 
@@ -146,7 +151,9 @@
     self.headerSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.headerSubtitleLabel.text = localize(@"i18n_str_18", nil);
     self.headerSubtitleLabel.font = [UIFont systemFontOfSize:[ScreenUtils sp:14] weight:UIFontWeightRegular];
-    self.headerSubtitleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.65];
+    // [P8-dark] 副标题：深壁纸=白0.65(historic 像素不变)；浅壁纸=secondaryLabelColor
+    self.headerSubtitleLabel.textColor = bgIsDark ? [[UIColor whiteColor] colorWithAlphaComponent:0.65]
+                                                  : [UIColor secondaryLabelColor];
     self.headerSubtitleLabel.numberOfLines = 0;
     [self.headerContainer addSubview:self.headerSubtitleLabel];
 
@@ -177,7 +184,11 @@
     card.layer.cornerRadius = [ScreenUtils dp:16];
     card.layer.cornerCurve = kCACornerCurveContinuous;
     card.layer.borderWidth = 0.5;
-    card.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.12].CGColor;
+    // [P8-dark] 卡片高光描边跟随壁纸明暗（深=白0.12 historic；浅=暗色，避免浅底白边不可见）
+    BackgroundManager *bgManager = [BackgroundManager sharedManager];
+    BOOL bgIsDark = bgManager.backgroundIsDark;
+    card.layer.borderColor = bgIsDark ? [[UIColor whiteColor] colorWithAlphaComponent:0.12].CGColor
+                                      : [[UIColor labelColor] colorWithAlphaComponent:0.12].CGColor;
     // 启用触摸交互
     card.userInteractionEnabled = YES;
 
@@ -206,7 +217,8 @@
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     titleLabel.text = title;
     titleLabel.font = [UIFont systemFontOfSize:[ScreenUtils sp:17] weight:UIFontWeightSemibold];
-    titleLabel.textColor = [UIColor whiteColor];
+    // [P8-dark] 卡片主标题：深壁纸=白(historic)；浅壁纸=labelColor
+    titleLabel.textColor = [bgManager contentTextColorForBackground];
     titleLabel.numberOfLines = 1;
     titleLabel.userInteractionEnabled = NO;
     [card addSubview:titleLabel];
@@ -216,7 +228,9 @@
     descLabel.translatesAutoresizingMaskIntoConstraints = NO;
     descLabel.text = description;
     descLabel.font = [UIFont systemFontOfSize:[ScreenUtils sp:13] weight:UIFontWeightRegular];
-    descLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.60];
+    // [P8-dark] 卡片描述：深壁纸=白0.60(historic 像素不变)；浅壁纸=secondaryLabelColor
+    descLabel.textColor = bgIsDark ? [[UIColor whiteColor] colorWithAlphaComponent:0.60]
+                                   : [UIColor secondaryLabelColor];
     descLabel.numberOfLines = 0;
     descLabel.userInteractionEnabled = NO;
     [card addSubview:descLabel];
@@ -225,7 +239,8 @@
     UIImageView *chevron = [[UIImageView alloc] init];
     chevron.translatesAutoresizingMaskIntoConstraints = NO;
     chevron.image = [UIImage systemImageNamed:@"chevron.right"];
-    chevron.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.40];
+    // [P8-dark] 右侧箭头：深壁纸=白0.40(historic)；浅壁纸=labelColor@0.40
+    chevron.tintColor = [[bgManager contentTextColorForBackground] colorWithAlphaComponent:0.40];
     chevron.contentMode = UIViewContentModeScaleAspectFit;
     chevron.userInteractionEnabled = NO;
     [card addSubview:chevron];
