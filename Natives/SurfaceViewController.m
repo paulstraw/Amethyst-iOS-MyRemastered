@@ -1032,7 +1032,7 @@ static UIView *findSDL_uikitview(UIView *root);
     [self.touchView addGestureRecognizer:hoverGesture];
 
     self.pointerHideInteraction = [[UIPointerInteraction alloc] initWithDelegate:self];
-    [self.touchView addInteraction:self.pointerHideInteraction];
+    [self.view addInteraction:self.pointerHideInteraction];
 
     self.tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(surfaceOnClick:)];
     self.tapGesture.allowedTouchTypes = @[@(UITouchTypeDirect)];
@@ -1876,7 +1876,10 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 {
     CGFloat screenScale = self.screenScale;
     if (!isGrabbing) {
-        screenScale *= resolutionScale;
+        // contentsScale is screenScale * resolutionScale and always matches the
+        // game's pixel size. On visionOS self.screenScale can be 1 while the
+        // surface renders at 2x, which put the menu cursor at half position.
+        screenScale = self.surfaceView.layer.contentsScale;
         if (virtualMouseEnabled) {
             if (event == ACTION_MOVE) {
                 virtualMouseFrame.origin.x += (location.x - lastVirtualMousePoint.x) * self.mouseSpeed;
@@ -1967,7 +1970,13 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     }
 }
 
+// SDL_uikitview passes presses it does not consume to super, which walks the
+// responder chain back up to this controller. Without a guard that re-forwards
+// them to SDL again and recurses until the main thread's stack overflows.
+static BOOL forwardingPressesToSDL = NO;
+
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    if (forwardingPressesToSDL) return;
     for (UIPress *press in presses) {
         if (press.key != nil) {
             [KeyboardInput sendKeyEvent:press.key down:YES];
@@ -1975,13 +1984,18 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     }
     // Forward to SDL view for MC 26.3 (SDL3 input)
     UIView *sdlView = findSDL_uikitview(self.view);
-    if (sdlView) [sdlView pressesBegan:presses withEvent:event];
+    if (sdlView) {
+        forwardingPressesToSDL = YES;
+        [sdlView pressesBegan:presses withEvent:event];
+        forwardingPressesToSDL = NO;
+    }
     // Always call super so that inputTextField (UITextInput) can receive
     // key events for text input (e.g., Minecraft chat).
     [super pressesBegan:presses withEvent:event];
 }
 
 - (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    if (forwardingPressesToSDL) return;
     for (UIPress *press in presses) {
         if (press.key != nil) {
             [KeyboardInput sendKeyEvent:press.key down:NO];
@@ -1989,7 +2003,11 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     }
     // Forward to SDL view for MC 26.3 (SDL3 input)
     UIView *sdlView = findSDL_uikitview(self.view);
-    if (sdlView) [sdlView pressesEnded:presses withEvent:event];
+    if (sdlView) {
+        forwardingPressesToSDL = YES;
+        [sdlView pressesEnded:presses withEvent:event];
+        forwardingPressesToSDL = NO;
+    }
     // Always call super so that inputTextField (UITextInput) can receive
     // key-up events properly.
     [super pressesEnded:presses withEvent:event];
