@@ -13,6 +13,9 @@
 @property(nonatomic, strong) UIStackView *menuStackView;
 @property(nonatomic, strong) NSArray<NSDictionary *> *menuItems;
 @property(nonatomic, assign) NSInteger selectedIndex;
+// ★ [UI-A] 菜单条上下内边距约束(竖屏横排时收紧,给 50pt 按钮留居中余量)
+@property(nonatomic, strong) NSLayoutConstraint *stackTopInsetConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *stackBottomInsetConstraint;
 
 @end
 
@@ -29,6 +32,12 @@
     self.menuStackView.spacing = compact ? 6 : 8;
     self.menuStackView.alignment = UIStackViewAlignmentCenter;
     self.menuStackView.distribution = UIStackViewDistributionEqualSpacing;
+
+    // ★ [UI-A] 竖屏横排:菜单卡矮(72pt),把上下内边距从 8 收到 4,使 50pt 按钮有更充分的
+    //   居中余量,避免小屏(iPhone SE 等)上按钮边缘被菜单卡圆角 + masksToBounds 裁切。
+    CGFloat inset = compact ? 4 : 8;
+    self.stackTopInsetConstraint.constant    = inset;
+    self.stackBottomInsetConstraint.constant = -inset;
 
     // ★ 关键修复(竖屏错位根因):按钮的 titleEdgeInsets/imageEdgeInsets 是按【竖排】
     //   "图标在上、文字在下"手调的(见 createMenuButtonWithItem:)。横排时必须把它们清零,
@@ -140,11 +149,14 @@
         ]];
     }
 
+    // ★ [UI-A] 单独持有上下内边距约束,竖屏横排时收紧(见 setCompactHorizontalLayout:)
+    self.stackTopInsetConstraint    = [self.menuStackView.topAnchor constraintEqualToAnchor:self.sidebarView.topAnchor constant:8];
+    self.stackBottomInsetConstraint = [self.menuStackView.bottomAnchor constraintEqualToAnchor:self.sidebarView.bottomAnchor constant:-8];
     [NSLayoutConstraint activateConstraints:@[
         [self.menuStackView.leadingAnchor constraintEqualToAnchor:self.sidebarView.leadingAnchor],
         [self.menuStackView.trailingAnchor constraintEqualToAnchor:self.sidebarView.trailingAnchor],
-        [self.menuStackView.topAnchor constraintEqualToAnchor:self.sidebarView.topAnchor constant:8],
-        [self.menuStackView.bottomAnchor constraintEqualToAnchor:self.sidebarView.bottomAnchor constant:-8],
+        self.stackTopInsetConstraint,
+        self.stackBottomInsetConstraint,
         [self.menuStackView.centerXAnchor constraintEqualToAnchor:self.sidebarView.centerXAnchor]
     ]];
 }

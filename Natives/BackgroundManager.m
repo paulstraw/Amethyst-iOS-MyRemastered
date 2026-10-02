@@ -128,7 +128,11 @@ static const NSInteger kDefaultBackgroundTag = 99995;
 
 - (void)loadUISettings {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    _uiEffect = [defaults integerForKey:kBackgroundUIEffectKey];
+    // ★ [UI-B] 修复(2026-10-02):键不存在时 integerForKey 返回 0,而 0 == BackgroundUIEffectTranslucent,
+    //   越界校验永远判不出"从未设置过" ⇒ 首装默认落到"半透明" ⇒ applyEffectToView: 的 Blur 分支永不执行
+    //   ⇒ 整条玻璃路径被静默跳过(用户现场:"我可以保证主界面绝对没有玻璃")。用 objectForKey 区分。
+    id ameEffObj = [defaults objectForKey:kBackgroundUIEffectKey];
+    _uiEffect = ameEffObj ? [defaults integerForKey:kBackgroundUIEffectKey] : BackgroundUIEffectBlur;
     if (_uiEffect < BackgroundUIEffectTranslucent || _uiEffect > BackgroundUIEffectBlur) {
         _uiEffect = BackgroundUIEffectBlur; // 默认毛玻璃效果
     }
@@ -138,7 +142,10 @@ static const NSInteger kDefaultBackgroundTag = 99995;
         _uiOpacity = 0.7; // 默认透明度
     }
     
-    _blurIntensity = [defaults floatForKey:kBackgroundBlurIntensityKey];
+    // ★ [UI-B] 同型修复(2026-10-02):键不存在返回 0.0,恰在合法区间 [0,1] 内 ⇒ 强度 0%
+    //   ⇒ blurView.alpha = 0.3 + 0*0.7 = 0.3,观感近于无。默认给 0.7。
+    id ameBlurObj = [defaults objectForKey:kBackgroundBlurIntensityKey];
+    _blurIntensity = ameBlurObj ? [defaults floatForKey:kBackgroundBlurIntensityKey] : 0.7;
     if (_blurIntensity < 0.0 || _blurIntensity > 1.0) {
         _blurIntensity = 0.7; // 默认模糊程度
     }
@@ -771,6 +778,12 @@ static const NSInteger kDefaultBackgroundTag = 99995;
         view.backgroundColor = [UIColor clearColor];
         // ★ 玻璃质感:高光描边 + 上缘内高光(不依赖 iOS 26 SDK)
         AmeAttachGlassRim(view, view.layer.cornerRadius);
+        // ★ [UI-B] 修复(2026-10-02):AmeRefreshGlassRim 全工程原本 0 个调用者
+        //   ⇒ 高光 CAGradientLayer 的 frame 恒为 (0,0,0,0) ⇒ 上缘高光从来没画出来过。
+        dispatch_async(dispatch_get_main_queue(), ^{
+            AmeRefreshGlassRim(view);
+            [self ameRefreshRimsRecursive:view];
+        });
     } else {
         // 半透明效果 - 移除 blur view，使用半透明背景
         // 修复：使用 systemBackgroundColor 替代硬编码深灰，自适应浅色/深色模式
@@ -1088,4 +1101,11 @@ static const NSInteger kDefaultBackgroundTag = 99995;
     return nil;
 }
 
+
+// ★ [UI-B] 递归重刷玻璃高光(frame 不随 autoresize 变化,必须在布局后重设)
+- (void)ameRefreshRimsRecursive:(UIView *)v {
+    if (!v) return;
+    AmeRefreshGlassRim(v);
+    for (UIView *sub in v.subviews) { [self ameRefreshRimsRecursive:sub]; }
+}
 @end

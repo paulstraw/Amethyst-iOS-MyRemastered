@@ -36,6 +36,10 @@ static const CGFloat kCardOuterMarginPad = 12.0;   // iPad 卡片到外边缘的
 static const CGFloat kCardOuterMarginPhone = 8.0;  // iPhone 卡片到外边缘的间距（窄屏减小留白）
 static const CGFloat kCardCornerRadius = 16.0;     // 卡片圆角
 
+// ★ [UI-A][PORTRAIT-FIX] 竖屏底部菜单条高度:菜单按钮 50pt + stack 上下内边距 8+8 = 66pt,
+//   取 72 留 6pt 余量,避免按钮被 sidebarCard 的圆角 + masksToBounds 裁掉 1~2pt。
+static const CGFloat kPortraitMenuBarHeight = 72.0;
+
 /// 检测物理设备是否为 iPhone（不受 debug.debug_ipad_ui 的 idiom hook 影响）。
 /// UIKit+hook.m 会把 idiom 强制改成 Pad，导致 trait.userInterfaceIdiom 不可靠。
 /// 这里用 UIDevice.model 检测真实设备类型。
@@ -96,6 +100,16 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
 
 @property(nonatomic, assign) BOOL isShowingProfileEditor;
 @property(nonatomic, strong) ProfileSettingsViewController *profileEditorVC;
+
+// ★ [UI-A][PORTRAIT-FIX] 中栏夹在左/右两卡之间那两条横向相邻约束(横屏专用)。
+//   原实现只在 setupCardContainers 里 activate 了它们、却没存进 landscapeConstraints,
+//   导致切竖屏时它们仍 active:中栏同时被"贴着菜单卡右边"和"贴 view.leading"两条约束拉扯
+//   ⇒ 竖屏三卡错位 / 自动布局打断约束(竖屏 bug 根因)。
+@property(nonatomic, strong) NSLayoutConstraint *contentBetweenLeadConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *contentBetweenTrailConstraint;
+
+// ★ [UI-A][DARK-MODE] 深浅色切换时重刷卡片基底(实现在下方)
+- (void)applyAppearanceForCurrentInterfaceStyle;
 
 @end
 
@@ -220,6 +234,12 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     BOOL portrait = (self.view.bounds.size.height > self.view.bounds.size.width);
     if (self.usingPortraitLayout == portrait) return;
     self.usingPortraitLayout = portrait;
+    // ★ [UI-A] 自证日志:切到哪套布局 + 当前尺寸与安全区,便于装机核对竖/横屏是否真的切了。
+    NSLog(@"[UI-A][ORIENT] layout=%@ size=%.0fx%.0f safe(top=%.0f bottom=%.0f left=%.0f right=%.0f)",
+          portrait ? @"PORTRAIT" : @"LANDSCAPE",
+          self.view.bounds.size.width, self.view.bounds.size.height,
+          self.view.safeAreaInsets.top, self.view.safeAreaInsets.bottom,
+          self.view.safeAreaInsets.left, self.view.safeAreaInsets.right);
     if (portrait) {
         [NSLayoutConstraint deactivateConstraints:self.landscapeConstraints];
         [NSLayoutConstraint activateConstraints:self.portraitConstraints];
@@ -246,8 +266,18 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     if (@available(iOS 11.0, *)) {
         safe = self.view.safeAreaInsets;
     }
-    CGFloat mTop    = outerMargin + safe.top;
-    CGFloat mBottom = MAX(outerMargin, safe.bottom + outerMargin * 0.5);
+    CGFloat mTop, mBottom;
+    if (self.usingPortraitLayout) {
+        // ★ [UI-A][PORTRAIT-SAFE] 竖屏:岛在顶部 ⇒ 顶吃 safe.top(内容区整体下移,不进岛);
+        //   底部菜单卡吃 safe.bottom(避开 home indicator)。竖屏 safe.left/right 恒为 0。
+        mTop    = outerMargin + safe.top;
+        mBottom = outerMargin + safe.bottom;
+    } else {
+        // ★ [UI-A][LANDSCAPE-FIX] 横屏:底边只让开 home indicator 本体,不再额外叠 outerMargin*0.5,
+        //   否则底边(≈29pt)比顶边(≈8pt)宽 3.6 倍,三张卡整体偏上、下空隙过大。
+        mTop    = outerMargin + safe.top;
+        mBottom = MAX(outerMargin, safe.bottom);
+    }
     self.edgeLeadingConstraint.constant  =  outerMargin + safe.left;
     self.edgeTrailingConstraint.constant = -(outerMargin + safe.right);
     self.edgeTopConstraint.constant      =  mTop;
@@ -256,18 +286,13 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
         if ([c.identifier isEqualToString:@"edge-top"])         { c.constant =  mTop; }
         else if ([c.identifier isEqualToString:@"edge-bottom"]) { c.constant = -mBottom; }
     }
-    // ★ [PORTRAIT-SAFE] 竖屏专用:顶部卡片的 top 与底部菜单卡的 bottom 各自吃安全区
-    if (self.usingPortraitLayout) {
-        for (NSLayoutConstraint *c in self.portraitConstraints) {
-            if ([c.identifier isEqualToString:@"portrait-top"]) {
-                c.constant = kCardOuterMarginPhone + safe.top;       // 竖屏岛在顶部
-            }
-        }
-    } else {
-        for (NSLayoutConstraint *c in self.portraitConstraints) {
-            if ([c.identifier isEqualToString:@"portrait-top"]) {
-                c.constant = kCardOuterMarginPhone;                  // 横屏用不到这条,复位
-            }
+    // ★ [UI-A][PORTRAIT-SAFE] 竖屏专用两条:顶部内容卡吃灵动岛安全区、底部菜单卡吃 home indicator。
+    //   横屏用不到这两条(portraitConstraints 未激活),统一复位,避免常量残留。
+    for (NSLayoutConstraint *c in self.portraitConstraints) {
+        if ([c.identifier isEqualToString:@"portrait-top"]) {
+            c.constant = self.usingPortraitLayout ? (kCardOuterMarginPhone + safe.top) : kCardOuterMarginPhone;
+        } else if ([c.identifier isEqualToString:@"portrait-bottom"]) {
+            c.constant = self.usingPortraitLayout ? -(kCardOuterMarginPhone + safe.bottom) : -kCardOuterMarginPhone;
         }
     }
     [self.view setNeedsLayout];
@@ -322,7 +347,7 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     CGFloat outerMargin = LauncherCardLayoutOuterMargin(self.traitCollection);
     for (NSLayoutConstraint *c in self.outerMarginConstraints) {
         if ([c.identifier isEqualToString:@"edge-top"] || [c.identifier isEqualToString:@"edge-bottom"]) {
-            continue;   // ★ [GLASS-SAFE] 这四条由下面统一按安全区设置
+            continue;   // ★ [GLASS-SAFE]/[UI-A] 带 edge-top/bottom 标识的几条由 applyEdgeInsets 统一按安全区设置
         }
         // 其余(卡片之间 / 尺寸)不受屏边安全区影响,按符号取 ±outerMargin
         if (c.constant >= 0) {
@@ -331,31 +356,20 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
             c.constant = -outerMargin;
         }
     }
-    // ★ [GLASS-SAFE] 屏边补偿:只有"有灵动岛/刘海的那一侧"的 safeArea 不为 0,
-    //   横屏时岛在左则 insets.left≈59pt(右为 0),岛在右则相反 ⇒ 该侧让开,另一侧仍贴边。
-    //   (原实现为求四边留白一致,直接用 view.edgeAnchor 绕过了安全区 ⇒ 岛那一侧被压住。)
-    UIEdgeInsets safe = UIEdgeInsetsZero;
-    if (@available(iOS 11.0, *)) {
-        safe = self.view.safeAreaInsets;
-    }
-    CGFloat mLeft   = outerMargin + safe.left;
-    CGFloat mRight  = outerMargin + safe.right;
-    CGFloat mTop    = outerMargin + safe.top;
-    CGFloat mBottom = MAX(outerMargin, safe.bottom + outerMargin * 0.5);
-    self.edgeLeadingConstraint.constant  =  mLeft;
-    self.edgeTrailingConstraint.constant = -mRight;
-    self.edgeTopConstraint.constant      =  mTop;
-    self.edgeBottomConstraint.constant   = -mBottom;
-    for (NSLayoutConstraint *c in self.outerMarginConstraints) {
-        if ([c.identifier isEqualToString:@"edge-top"])         { c.constant =  mTop; }
-        else if ([c.identifier isEqualToString:@"edge-bottom"]) { c.constant = -mBottom; }
-    }
+    // ★ [UI-A][GLASS-SAFE] 屏边补偿统一走 applyEdgeInsets,避免两处公式漂移:
+    //   岛在左/右时该侧让开 safe.left/right;竖屏时顶部内容卡让开岛、底部菜单卡让开 home indicator。
+    [self applyEdgeInsets];
     // 关键修复（阶段4：Card 布局进入设置崩溃，无日志）：
     // 与 LauncherRootViewController 对齐：仅遍历直接子 VC，避免递归栈溢出风险。
     // 之前递归遍历所有后代 VC（adjustChildLayoutForTraitCollection:），若 VC 树存在
     // 循环引用会栈溢出（SIGSEGV，不被 NSUncaughtExceptionHandler 捕获，故无日志）。
     // respondsToSelector:@selector(viewWillAppear:) 检查永真（所有 UIViewController 都响应），
     // 属冗余代码，一并删除。
+    // ★ [UI-A][DARK-MODE] 深浅色切换:重刷卡片基底(毛玻璃/自定义叠色);布局不变、颜色要对。
+    if (previousTraitCollection &&
+        previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle) {
+        [self applyAppearanceForCurrentInterfaceStyle];
+    }
     for (UIViewController *child in self.childViewControllers) {
         [child.view setNeedsLayout];
     }
@@ -392,7 +406,10 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     // 保留 BackgroundManager 插入的毛玻璃 UIVisualEffectView，仅叠加半透明色
     // 这样既显示用户自定义的卡片颜色，又能透出背景图（与 RootVC 行为一致）
     // 使用 0.7 alpha 让背景图能适度透出（参照 ZL2 的 influencedByBackgroundColor 思路）
-    card.backgroundColor = [color colorWithAlphaComponent:0.7];
+    // ★ [UI-A][DARK-MODE] 深色外观下同样的自定义色若仍叠 0.7 会偏亮发灰,
+    //   降到 0.5 让深色毛玻璃基底多透出一些,保证深浅两套观感一致。
+    CGFloat alpha = (self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) ? 0.5 : 0.7;
+    card.backgroundColor = [color colorWithAlphaComponent:alpha];
 }
 
 - (nullable UIColor *)colorFromHexString:(id)hex {
@@ -412,6 +429,18 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     [self applyCustomCardColorToCard:self.sidebarCard];
     [self applyCustomCardColorToCard:self.contentCard];
     [self applyCustomCardColorToCard:self.rightPanelCard];
+}
+
+/// ★ [UI-A][DARK-MODE] 深浅色切换时重刷三张卡的基底:
+/// 重新应用毛玻璃/半透明效果 + 按新外观重刷自定义卡片叠色(applyCustomCardColorToCard 内按 style 取 alpha)。
+/// 布局本身不随深浅色变化,变化的只有卡片基底色与毛玻璃亮度。
+- (void)applyAppearanceForCurrentInterfaceStyle {
+    for (UIView *card in @[self.sidebarCard, self.contentCard, self.rightPanelCard]) {
+        if (!card) continue;
+        [[BackgroundManager sharedManager] applyEffectToView:card];
+        [self applyCustomCardColorToCard:card];
+    }
+    [self.view setNeedsLayout];
 }
 
 - (void)setupCardContainers {
@@ -466,11 +495,20 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     contentBottom.identifier = @"edge-bottom";
     sidebarTop.identifier    = @"edge-top";
     sidebarBottom.identifier = @"edge-bottom";
+    // ★ [UI-A][LANDSCAPE-FIX] 右栏上下也必须吃同一套屏边补偿:原实现漏了这两条 ⇒ 横屏下右栏卡片
+    //   比左/中栏多伸出约 17pt(底边不齐)、整体错位。补上 identifier 后 applyEdgeInsets 的循环
+    //   会把右栏和左/中栏一起对齐(此前只有 sidebar/content 带 identifier)。
+    rightTop.identifier    = @"edge-top";
+    rightBottom.identifier = @"edge-bottom";
 
     // ★ [PORTRAIT] 记下横屏那一套(供切换用)
     self.landscapeConstraints = @[sidebarLeading, sidebarTop, sidebarBottom,
                                   rightTrailing, rightTop, rightBottom,
                                   contentTop, contentBottom];
+
+    // ★ [UI-A][PORTRAIT-FIX] 中栏与左/右两卡的横向相邻约束:必须单独持有,否则切竖屏时无法 deactivate。
+    self.contentBetweenLeadConstraint  = [self.contentCard.leadingAnchor  constraintEqualToAnchor:self.sidebarCard.trailingAnchor    constant:kCardSpacing];
+    self.contentBetweenTrailConstraint = [self.contentCard.trailingAnchor constraintEqualToAnchor:self.rightPanelCard.leadingAnchor constant:-kCardSpacing];
 
     [NSLayoutConstraint activateConstraints:@[
         // 左侧菜单卡片
@@ -482,10 +520,15 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
         self.rightPanelWidthConstraint,
 
         // 中间内容卡片——填满侧栏与右面板之间的空间，两侧间距均等为 kCardSpacing
-        [self.contentCard.leadingAnchor constraintEqualToAnchor:self.sidebarCard.trailingAnchor constant:kCardSpacing],
-        [self.contentCard.trailingAnchor constraintEqualToAnchor:self.rightPanelCard.leadingAnchor constant:-kCardSpacing],
+        self.contentBetweenLeadConstraint,
+        self.contentBetweenTrailConstraint,
         contentTop, contentBottom
     ]];
+
+    // ★ [UI-A][PORTRAIT-FIX] 把中栏左右两条也并入横屏约束集 ⇒ 切竖屏时随 landscapeConstraints 一起
+    //   deactivate,消除"中栏同时贴菜单卡右边 + 贴 view.leading"的约束冲突(竖屏三卡错位根因)。
+    self.landscapeConstraints = [self.landscapeConstraints arrayByAddingObjectsFromArray:
+                                 @[self.contentBetweenLeadConstraint, self.contentBetweenTrailConstraint]];
 
     // ★ [PORTRAIT] 竖屏折法:三张卡【竖着摞】—— 内容在上、右栏(含启动键)居中、菜单在底。
     //   选择"竖摞"而不是"彻底重排成底部标签栏"的原因:右栏承载【启动游戏/下载进度】等核心操作,
@@ -503,11 +546,13 @@ static CGFloat LauncherCardLayoutRightPanelWidth(UITraitCollection *trait) {
     NSLayoutConstraint *pSideTrail    = [self.sidebarCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kCardOuterMarginPhone];
     NSLayoutConstraint *pSideBottom   = [self.sidebarCard.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-kCardOuterMarginPhone];
     NSLayoutConstraint *pSideTop      = [self.sidebarCard.topAnchor constraintEqualToAnchor:self.rightPanelCard.bottomAnchor constant:kCardSpacing];
-    NSLayoutConstraint *pSideHeight   = [self.sidebarCard.heightAnchor constraintEqualToConstant:64];
+    NSLayoutConstraint *pSideHeight   = [self.sidebarCard.heightAnchor constraintEqualToConstant:kPortraitMenuBarHeight];
     for (NSLayoutConstraint *c in @[pContentTop, pContentLead, pContentTrail, pRightTop, pRightLead, pRightTrail,
                                     pSideLead, pSideTrail, pSideBottom, pSideTop, pSideHeight]) {
         c.identifier = @"portrait-set";
     }
+    // ★ [UI-A][PORTRAIT-SAFE] 底部菜单卡单独打标,竖屏要避开 home indicator(见 applyEdgeInsets)。
+    pSideBottom.identifier = @"portrait-bottom";
     self.portraitConstraints = @[pContentTop, pContentLead, pContentTrail, pRightTop, pRightLead, pRightTrail,
                                  pSideLead, pSideTrail, pSideBottom, pSideTop, pSideHeight];
 }
