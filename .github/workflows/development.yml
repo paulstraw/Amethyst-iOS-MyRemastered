@@ -164,15 +164,15 @@ jobs:
           export SLIMMED=0
 
           if [ "${{ matrix.platform_name }}" == "ios" ]; then
-            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }}
+            gmake -j1 dsym package PLATFORM=${{ matrix.platform }}
 
-            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1
+            gmake -j1 dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1
 
           elif [ "${{ matrix.platform_name }}" == "tvos" ]; then
-            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1
+            gmake -j1 dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1
 
           else
-            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }}
+            gmake -j1 dsym package PLATFORM=${{ matrix.platform }}
           fi
 
       - name: Verify the built binary really used the iOS 26 SDK
