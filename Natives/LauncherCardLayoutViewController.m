@@ -666,12 +666,12 @@ static const void *kE1InstanceNameKey = &kE1InstanceNameKey;
     self.edgeLeadingConstraint  = sidebarLeading;
     self.edgeTrailingConstraint = contentTrail;
     self.edgeTopConstraint      = sidebarTop;
-    self.edgeBottomConstraint   = sidebarBottom;
+    // ★ [TOP-BAR] 顶栏后,最靠底的是内容卡(侧栏已是顶横条、无 bottom)→ 底边补偿改挂 contentBottom
+    self.edgeBottomConstraint   = contentBottom;
     // contentCard 的上下与侧栏一致,同步补偿(否则中栏会被岛侧顶出去而错位)
     contentTop.identifier    = @"edge-top";
     contentBottom.identifier = @"edge-bottom";
     sidebarTop.identifier    = @"edge-top";
-    sidebarBottom.identifier = @"edge-bottom";
 
     // ★ [UI-A][PORTRAIT-FIX] 中栏与左栏的横向相邻约束:必须单独持有,否则切竖屏时无法 deactivate。
     // ★ [TOP-BAR] 顶栏改横条后,主区不再挂在侧栏右边 —— 这两条改为"主区左边界"与"右栏左边界",
