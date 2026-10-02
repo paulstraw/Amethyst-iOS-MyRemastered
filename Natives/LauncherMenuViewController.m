@@ -7,59 +7,181 @@
 #import "BackgroundManager.h"
 #import "utils.h"
 
+// ===========================================================================
+//  ★ [E2] 菜单(导航)改造 —— 按 E 方案(Liquid Glass)SPEC §2/§3 落地
+//  ---------------------------------------------------------------------------
+//  竖屏:底部【4 个标签】(实例 / 下载 / 资源 / 设置),图标在上、文字在下,
+//        选中 = 系统强调蓝(#0A84FF 深 / #007AFF 浅)。
+//  横屏:左侧栏【带文字的命名项】(实例 / 下载中心 / 资源管理 / 多人游戏 / 设置)
+//        + 顶部「Air」品牌头 + 底部一行版本信息(Metal · 26.2 / v5.1.0)。
+//  颜色令牌全部来自 SPEC §2.1(E-glass 行 9/11、E-land 行 39),深浅两套走
+//        colorWithDynamicProvider: 自动随系统外观切换。
+//  灵动岛占位项:横屏侧栏正中(≈屏幕垂直中心 = 岛所在)保留【同尺寸不可见占位】,
+//        避免删项后 UIStackView(EqualSpacing) 重新均分导致其余按钮整体位移。
+//  依据稿:E-glass.html(行 38-151)、E-land.html(行 9/14/15/39)、
+//          _uiwork/ref/E-glass_四态.png(四态视觉基准)。
+// ===========================================================================
+
+/// 强调蓝:深色 #0A84FF / 浅色 #007AFF(SPEC §2.1 · E-glass 行 9/11)
+static UIColor *E2AccentColor(void) {
+    return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *t) {
+        if (t.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithRed:0x0A / 255.0 green:0x84 / 255.0 blue:0xFF / 255.0 alpha:1.0];
+        }
+        return [UIColor colorWithRed:0x00 / 255.0 green:0x7A / 255.0 blue:0xFF / 255.0 alpha:1.0];
+    }];
+}
+
+/// 主文字 fg:深 #FFFFFF / 浅 #0B0B0C(E-glass 行 9/11;E-land 用 #1C1C1E)
+static UIColor *E2ForegroundColor(void) {
+    return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *t) {
+        if (t.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor whiteColor];
+        }
+        return [UIColor colorWithRed:0x0B / 255.0 green:0x0B / 255.0 blue:0x0C / 255.0 alpha:1.0];
+    }];
+}
+
+/// 次要文字 dim:深 rgba(255,255,255,.58) / 浅 rgba(0,0,0,.55)(SPEC §2.1)
+static UIColor *E2DimColor(void) {
+    return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *t) {
+        if (t.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return [UIColor colorWithWhite:1.0 alpha:0.58];
+        }
+        return [UIColor colorWithWhite:0.0 alpha:0.55];
+    }];
+}
+
+/// 品牌 logo 渐变:紫(#7b5cff)→ 青(#42d6ff)(E-land 行 13)
+static UIColor *E2BrandLogoStart(void) {
+    return [UIColor colorWithRed:0x7b / 255.0 green:0x5c / 255.0 blue:0xff / 255.0 alpha:1.0];
+}
+static UIColor *E2BrandLogoEnd(void) {
+    return [UIColor colorWithRed:0x42 / 255.0 green:0xd6 / 255.0 blue:0xff / 255.0 alpha:1.0];
+}
+
+static const NSInteger kE2IconTag  = 4201;   // 菜单按钮内的 UIImageView(图标)
+static const NSInteger kE2LabelTag = 4202;   // 菜单按钮内的 UILabel(文字)
+
+// 竖屏底部标签栏尺寸 / 横屏侧栏尺寸(E-glass 底栏高 56、E-land 项 9×14 内边距)
+static const CGFloat kE2PortraitIconSize  = 22.0;
+static const CGFloat kE2PortraitTitleSize = 11.0;
+static const CGFloat kE2LandscapeIconSize  = 18.0;
+static const CGFloat kE2LandscapeTitleSize = 9.5;
+static const CGFloat kE2LandscapeButtonW = 46.0;
+static const CGFloat kE2LandscapeButtonH = 36.0;
+static const CGFloat kE2LandscapeSpacing = 4.0;
+
 @interface LauncherMenuViewController ()
 
 @property(nonatomic, strong) UIView *sidebarView;
 @property(nonatomic, strong) UIStackView *menuStackView;
 @property(nonatomic, strong) NSArray<NSDictionary *> *menuItems;
+// ★ [E2] 按 index 顺序持有菜单按钮,便于朝向切换时统一改文字/尺寸/可见性
+@property(nonatomic, strong) NSMutableArray<UIButton *> *menuButtons;
+@property(nonatomic, strong) NSMutableArray<NSArray<NSLayoutConstraint *> *> *buttonSizeConstraints; // @[w,h]
+@property(nonatomic, strong) NSMutableArray<NSArray<NSLayoutConstraint *> *> *iconSizeConstraints;   // @[w,h]
+// ★ [E2] 品牌头(横屏)与版本脚注(横屏)
+@property(nonatomic, strong) UIView *brandHeaderView;
+@property(nonatomic, strong) UIView *versionFooterView;
+@property(nonatomic, strong) CAGradientLayer *brandLogoGradient;
 // ★ [UI-C] 菜单图标自愈定时器(CoreUI 冷启首调用竞态 ⇒ 主界面图标可能拿到 nil)
 @property(nonatomic, strong) NSTimer *menuIconSelfHealTimer;
 @property(nonatomic, assign) NSInteger selectedIndex;
-// ★ [UI-A] 菜单条上下内边距约束(竖屏横排时收紧,给 50pt 按钮留居中余量)
+// ★ [UI-A] 菜单条上下内边距约束(竖屏横排时收紧,给按钮留居中余量)
 @property(nonatomic, strong) NSLayoutConstraint *stackTopInsetConstraint;
 @property(nonatomic, strong) NSLayoutConstraint *stackBottomInsetConstraint;
+// ★ [E2] 当前是否竖屏(底部标签栏)。NO = 横屏(左侧栏)。
+@property(nonatomic, assign) BOOL compactLayout;
+@property(nonatomic, assign) BOOL hasPendingCompact;
+@property(nonatomic, assign) BOOL pendingCompact;
 
 @end
 
 @implementation LauncherMenuViewController
 
-#pragma mark - ★ [PORTRAIT] 排布切换
+#pragma mark - ★ [E2] 排布切换(竖屏底部标签栏 / 横屏左侧栏)
 
-/// 竖屏(compact):菜单改成【横向一行】并与卡片等宽;横屏恢复【竖向一列】。
-/// 只改 stack 的 axis/spacing,不动按钮与约束(约束是 leading/trailing 铺满,两向都成立)。
+/// 父布局 VC(LauncherCardLayoutViewController)在转屏时调用:
+/// 竖屏(compact=YES)⇒ 底部标签栏;横屏(compact=NO)⇒ 左侧栏 + 品牌头 + 版本脚注。
+/// 只改 stack 的 axis/alignment/distribution 与按钮尺寸/文字,不动父子约束。
 - (void)setCompactHorizontalLayout:(NSNumber *)compactNumber {
     BOOL compact = [compactNumber boolValue];
-    if (!self.menuStackView) return;
-    self.menuStackView.axis = compact ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
-    self.menuStackView.spacing = compact ? 6 : 8;
-    self.menuStackView.alignment = UIStackViewAlignmentCenter;
-    self.menuStackView.distribution = UIStackViewDistributionEqualSpacing;
+    if (!self.menuStackView) {          // viewDidLoad 尚未跑完:先记下,稍后补应用
+        self.pendingCompact = compact;
+        self.hasPendingCompact = YES;
+        return;
+    }
+    [self applyE2LayoutForCompact:compact];
+}
 
-    // ★ [UI-A] 竖屏横排:菜单卡矮(72pt),把上下内边距从 8 收到 4,使 50pt 按钮有更充分的
-    //   居中余量,避免小屏(iPhone SE 等)上按钮边缘被菜单卡圆角 + masksToBounds 裁切。
-    CGFloat inset = compact ? 4 : 8;
-    self.stackTopInsetConstraint.constant    = inset;
+/// ★ [E2] 统一应用"竖屏 / 横屏"两套菜单排布。
+- (void)applyE2LayoutForCompact:(BOOL)compact {
+    if (!self.menuStackView) return;
+    self.compactLayout = compact;
+
+    // 1) 方向 / 对齐 / 分布
+    //    竖屏:横向一行、等宽铺满、撑满高度(底部标签栏,E-glass 行 61 底栏 4 项 flex:1)。
+    //    横屏:竖向一列、居中、按最小间距均分(E-glass 行 98 侧栏 gap 5)。
+    self.menuStackView.axis         = compact ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
+    self.menuStackView.alignment    = compact ? UIStackViewAlignmentFill     : UIStackViewAlignmentCenter;
+    self.menuStackView.distribution = compact ? UIStackViewDistributionFillEqually
+                                              : UIStackViewDistributionEqualSpacing;
+    self.menuStackView.spacing      = compact ? 0.0 : kE2LandscapeSpacing;
+
+    // 2) 上下内边距(E-glass 底栏 56 高 / 侧栏 padding 10)
+    CGFloat inset = compact ? 6.0 : 8.0;
+    self.stackTopInsetConstraint.constant    =  inset;
     self.stackBottomInsetConstraint.constant = -inset;
 
-    // ★ 关键修复(竖屏错位根因):按钮的 titleEdgeInsets/imageEdgeInsets 是按【竖排】
-    //   "图标在上、文字在下"手调的(见 createMenuButtonWithItem:)。横排时必须把它们清零,
-    //   否则图标与文字会各自偏到角落 —— 这就是竖屏下菜单看着"错位/歪"的原因。
-    for (UIView *v in self.menuStackView.arrangedSubviews) {
-        if (![v isKindOfClass:[UIButton class]]) continue;
-        UIButton *b = (UIButton *)v;
-        if (compact) {
-            b.titleEdgeInsets = UIEdgeInsetsZero;
-            b.imageEdgeInsets = UIEdgeInsetsZero;
-            b.contentEdgeInsets = UIEdgeInsetsMake(2, 0, 2, 0);
-            b.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
+    // 3) 品牌头 / 版本脚注:仅横屏显示(竖屏容器是底部标签栏,放不下也不该有)
+    self.brandHeaderView.hidden   = compact;
+    self.versionFooterView.hidden = compact;
+
+    // 4) 逐项:文字命名、可见性、尺寸
+    for (NSInteger i = 0; i < self.menuButtons.count; i++) {
+        UIButton *btn = self.menuButtons[i];
+        NSDictionary *item = self.menuItems[i];
+        BOOL isPlaceholder  = [item[@"placeholder"] boolValue];
+        BOOL landscapeOnly  = [item[@"landscapeOnly"] boolValue];
+
+        // 可见性:
+        //  - 占位项:竖屏隐藏(4 项等分即可);横屏【保持 visible 但不可见内容】以占位,防止其余按钮位移。
+        //  - 横屏独有项(多人游戏):竖屏隐藏。
+        if (isPlaceholder || landscapeOnly) {
+            btn.hidden = compact;
         } else {
-            b.titleEdgeInsets = UIEdgeInsetsMake(30, -30, 0, 0);   // 与原始实现一致
-            b.imageEdgeInsets = UIEdgeInsetsMake(-10, 0, 0, 0);
-            b.contentEdgeInsets = UIEdgeInsetsZero;
+            btn.hidden = NO;
+        }
+
+        if (!isPlaceholder) {
+            UILabel *lbl = (UILabel *)[btn viewWithTag:kE2LabelTag];
+            // 命名:竖屏短名(实例/下载/资源/设置);横屏全名(实例/下载中心/资源管理/多人游戏/设置)
+            lbl.text = (compact ? item[@"portrait"] : item[@"landscape"]) ?: @"";
+            lbl.font = [UIFont systemFontOfSize:(compact ? kE2PortraitTitleSize : kE2LandscapeTitleSize)
+                                         weight:UIFontWeightMedium];
+            for (NSLayoutConstraint *c in self.iconSizeConstraints[i]) {
+                c.constant = compact ? kE2PortraitIconSize : kE2LandscapeIconSize;
+            }
+        }
+
+        // 尺寸约束:竖屏撤掉固定尺寸(靠 FillEqually/Fill 撑满),横屏用固定尺寸。
+        for (NSLayoutConstraint *c in self.buttonSizeConstraints[i]) {
+            c.active = !compact;
         }
     }
+
+    [self updateButtonColors];
     [self.menuStackView setNeedsLayout];
     [self.view setNeedsLayout];
+
+    // ★ [E2] 自证日志:装机后可用 `log stream --predicate 'processImagePath CONTAINS "Air"'` 核对朝向是否真的切了。
+    NSUInteger visible = 0;
+    for (UIButton *b in self.menuButtons) { if (!b.hidden) visible++; }
+    NSLog(@"[E2][MENU] layout=%@ items=%lu/%lu (竖屏=底部4标签 / 横屏=侧栏5项+占位) sideW=%.0f",
+          compact ? @"PORTRAIT-TABBAR" : @"LANDSCAPE-SIDEBAR",
+          (unsigned long)visible, (unsigned long)self.menuButtons.count,
+          self.view.bounds.size.width);
 }
 
 #pragma mark - Lifecycle
@@ -86,29 +208,38 @@
                                                  name:@"LauncherAppearanceChanged"
                                                object:nil];
 
-    // 菜单项配置
-    // 联机相关入口暂不显示（需进一步完善）
-    // case 3 为"联机"（陶瓦联机 Terracotta，与 HMCL/FCL/ZL2 互通）
-    // case 4 为"ZeroTier 联机"（独立入口，与陶瓦联机并列，便于用户直接进入 ZeroTier 界面）
-    // case 5 为"设置"
-    // 键位调整界面已移到设置页面中
+    // ★ [E2] 菜单项配置(6 项)。
+    //   portrait  = 竖屏底部标签栏用的短名(4 项:实例/下载/资源/设置)
+    //   landscape = 横屏左侧栏用的全名(5 项:实例/下载中心/资源管理/多人游戏/设置)
+    //   landscapeOnly = 仅横屏可见(多人游戏 / 占位)
+    //   placeholder   = 灵动岛同尺寸不可见占位(横屏侧栏正中 ≈ 屏幕垂直中心)
+    //   命名依据:E-land.html 行 14-18(实例/下载中心/资源管理/多人游戏/设置);
+    //             E-glass.html 行 62(竖屏底栏 实例/下载/资源/设置)。
     self.menuItems = @[
-        @{@"icon": @"house.fill", @"title": @" ", @"index": @0},
-        @{@"icon": @"arrow.down.circle.fill", @"title": @" ", @"index": @1},
-        // ★ AI 入口从侧栏移出(横屏时灵动岛正好压在这一格上 ⇒ 5 格均分的正中)
+        @{@"icon": @"house.fill",             @"portrait": @"实例", @"landscape": @"实例",   @"index": @0},
+        @{@"icon": @"arrow.down.circle.fill", @"portrait": @"下载", @"landscape": @"下载中心", @"index": @1},
+        // ★ AI 入口从侧栏移出(横屏时灵动岛正好压在这一格上 ⇒ 竖列均分的正中)。
         //   这里保留【同尺寸占位】而不是删除:删掉会让 UIStackView(EqualSpacing) 重新均分,
-        //   其余 4 个按钮的位置会整体位移。占位尺寸与按钮一致 ⇒ 几何完全不变,只是不显示。
-        @{@"icon": @"", @"title": @" ", @"index": @2, @"placeholder": @YES},
-        @{@"icon": @"puzzlepiece.fill", @"title": @" ", @"index": @3},
-        // 暂时移除两个联机图标，恢复时取消下方两行注释并将设置项 index 改回 @6
-        // @{@"icon": @"antenna.radiowaves.left.and.right", @"title": @" ", @"index": @4},
-        // @{@"icon": @"network", @"title": @" ", @"index": @5},
-        @{@"icon": @"gearshape.fill", @"title": @" ", @"index": @4}
+        //   其余按钮的位置会整体位移。占位尺寸与按钮一致 ⇒ 几何完全不变,只是不显示。
+        //   [E2] 竖屏底栏不需要占位(4 项 FillEqually 等分),故 landscapeOnly=YES。
+        @{@"icon": @"", @"portrait": @"", @"landscape": @"", @"index": @2,
+          @"placeholder": @YES, @"landscapeOnly": @YES},
+        @{@"icon": @"puzzlepiece.fill",       @"portrait": @"资源", @"landscape": @"资源管理", @"index": @3},
+        // [E2] 多人游戏:E-land 行 17(🌐 多人游戏),横屏侧栏第 4 项,竖屏底栏不放。
+        @{@"icon": @"network",                @"portrait": @"",     @"landscape": @"多人游戏", @"index": @4,
+          @"landscapeOnly": @YES},
+        @{@"icon": @"gearshape.fill",         @"portrait": @"设置", @"landscape": @"设置",   @"index": @5}
     ];
-    
+
     self.selectedIndex = 0;
-    
+
     [self setupSidebar];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    // 品牌 logo 渐变背景要跟随 logo 视图尺寸(E-land 行 13:27×27 圆角 8;此处按侧栏窄宽度缩到 22)
+    self.brandLogoGradient.frame = self.brandLogoGradient.superlayer.bounds;
 }
 
 #pragma mark - UI Setup
@@ -126,6 +257,10 @@
         [self.sidebarView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 
+    self.menuButtons          = [NSMutableArray array];
+    self.buttonSizeConstraints = [NSMutableArray array];
+    self.iconSizeConstraints   = [NSMutableArray array];
+
     // 创建垂直均分的 UIStackView，替代固定偏移布局。
     // 之前用 startY=60 + 固定间距 15，5 个按钮总高 370pt，在 iPhone 横屏（卡片高度不足）
     // 时第 5 个按钮（设置）被卡片 masksToBounds 裁剪，且按钮只锚定 top 无 bottom 约束，
@@ -135,24 +270,48 @@
     self.menuStackView = [[UIStackView alloc] init];
     self.menuStackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.menuStackView.axis = UILayoutConstraintAxisVertical;
-    [self beginMenuIconSelfHeal];   // ★ [UI-C]
     self.menuStackView.distribution = UIStackViewDistributionEqualSpacing;
     self.menuStackView.alignment = UIStackViewAlignmentCenter;
-    self.menuStackView.spacing = 8;
+    self.menuStackView.spacing = kE2LandscapeSpacing;
     [self.sidebarView addSubview:self.menuStackView];
 
-    CGFloat buttonSize = 50;
+    // ★ [E2] 品牌头(横屏顶部:E-land 行 14「✦ Air」)——作为 stack 的首个 arrangedSubview
+    self.brandHeaderView = [self buildBrandHeaderView];
+    [self.menuStackView addArrangedSubview:self.brandHeaderView];
+
     for (NSInteger i = 0; i < self.menuItems.count; i++) {
         NSDictionary *item = self.menuItems[i];
         UIButton *btn = [self createMenuButtonWithItem:item index:i];
         [self.menuStackView addArrangedSubview:btn];
-        [NSLayoutConstraint activateConstraints:@[
-            [btn.widthAnchor constraintEqualToConstant:buttonSize],
-            [btn.heightAnchor constraintEqualToConstant:buttonSize]
-        ]];
+        [self.menuButtons addObject:btn];
+
+        // 尺寸约束:横屏激活(固定 46×36),竖屏关闭(靠 FillEqually/Fill 撑满)
+        NSLayoutConstraint *w = [btn.widthAnchor  constraintEqualToConstant:kE2LandscapeButtonW];
+        NSLayoutConstraint *h = [btn.heightAnchor constraintEqualToConstant:kE2LandscapeButtonH];
+        w.priority = UILayoutPriorityDefaultHigh;   // 空间不足(小屏横屏)时允许压缩,避免约束冲突
+        h.priority = UILayoutPriorityDefaultHigh;
+        [NSLayoutConstraint activateConstraints:@[w, h]];
+        [self.buttonSizeConstraints addObject:@[w, h]];
+
+        // 图标尺寸约束(朝向切换时改 constant)
+        UIImageView *iv = (UIImageView *)[btn viewWithTag:kE2IconTag];
+        NSMutableArray<NSLayoutConstraint *> *pair = [NSMutableArray array];
+        for (NSLayoutConstraint *c in iv.constraints) {
+            if ((c.firstAttribute == NSLayoutAttributeWidth || c.firstAttribute == NSLayoutAttributeHeight) &&
+                (c.firstItem == iv || c.secondItem == iv)) {
+                [pair addObject:c];
+            }
+        }
+        [self.iconSizeConstraints addObject:pair];
     }
 
-    // ★ [UI-A] 单独持有上下内边距约束,竖屏横排时收紧(见 setCompactHorizontalLayout:)
+    // ★ [E2] 版本脚注(横屏底部:Metal · 26.2 / v5.1.0,E-glass 行 106)
+    self.versionFooterView = [self buildVersionFooterView];
+    [self.menuStackView addArrangedSubview:self.versionFooterView];
+
+    [self beginMenuIconSelfHeal];   // ★ [UI-C]
+
+    // ★ [UI-A] 单独持有上下内边距约束,竖屏横排时收紧(见 applyE2LayoutForCompact:)
     self.stackTopInsetConstraint    = [self.menuStackView.topAnchor constraintEqualToAnchor:self.sidebarView.topAnchor constant:8];
     self.stackBottomInsetConstraint = [self.menuStackView.bottomAnchor constraintEqualToAnchor:self.sidebarView.bottomAnchor constant:-8];
     [NSLayoutConstraint activateConstraints:@[
@@ -162,54 +321,176 @@
         self.stackBottomInsetConstraint,
         [self.menuStackView.centerXAnchor constraintEqualToAnchor:self.sidebarView.centerXAnchor]
     ]];
+
+    // 应用初始朝向:父 VC 若在 viewDidLoad 之前就调过 setCompactHorizontalLayout:,此处补应用;
+    // 否则默认横屏(与历史默认一致),随后父 VC 转屏时会再纠正。
+    if (self.hasPendingCompact) {
+        self.hasPendingCompact = NO;
+        [self applyE2LayoutForCompact:self.pendingCompact];
+    } else {
+        [self applyE2LayoutForCompact:NO];
+    }
 }
 
+#pragma mark - ★ [E2] 品牌头 / 版本脚注
+
+/// 横屏侧栏顶部品牌头:「Air」(logo 渐变方块 + 粗体字,E-land 行 13-14)。
+- (UIView *)buildBrandHeaderView {
+    UIView *container = [[UIView alloc] init];
+    container.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIView *logo = [[UIView alloc] init];
+    logo.translatesAutoresizingMaskIntoConstraints = NO;
+    logo.layer.cornerRadius = 7.0;
+    logo.layer.masksToBounds = YES;
+    CAGradientLayer *g = [CAGradientLayer layer];
+    g.colors = @[(__bridge id)E2BrandLogoStart().CGColor, (__bridge id)E2BrandLogoEnd().CGColor];
+    g.startPoint = CGPointMake(0.0, 0.0);
+    g.endPoint   = CGPointMake(1.0, 1.0);
+    [logo.layer addSublayer:g];
+    self.brandLogoGradient = g;
+
+    UIImageView *spark = [[UIImageView alloc] initWithImage:[self menuIconNamed:@"sparkles"]];
+    spark.translatesAutoresizingMaskIntoConstraints = NO;
+    spark.contentMode = UIViewContentModeScaleAspectFit;
+    spark.tintColor = [UIColor whiteColor];
+    [logo addSubview:spark];
+
+    UILabel *air = [[UILabel alloc] init];
+    air.translatesAutoresizingMaskIntoConstraints = NO;
+    air.text = @"Air";
+    air.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightSemibold];
+    air.textColor = E2ForegroundColor();
+    air.adjustsFontSizeToFitWidth = YES;
+    air.minimumScaleFactor = 0.6;
+
+    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[logo, air]];
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    row.axis = UILayoutConstraintAxisHorizontal;
+    row.alignment = UIStackViewAlignmentCenter;
+    row.spacing = 5.0;
+    row.userInteractionEnabled = NO;
+    [container addSubview:row];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [logo.widthAnchor  constraintEqualToConstant:22.0],
+        [logo.heightAnchor constraintEqualToConstant:22.0],
+        [spark.centerXAnchor constraintEqualToAnchor:logo.centerXAnchor],
+        [spark.centerYAnchor constraintEqualToAnchor:logo.centerYAnchor],
+        [spark.widthAnchor  constraintEqualToConstant:12.0],
+        [spark.heightAnchor constraintEqualToConstant:12.0],
+        [row.centerXAnchor constraintEqualToAnchor:container.centerXAnchor],
+        [row.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
+        // 等号(而非 >= / <=):让 container 宽度由内容唯一确定,避免 arrangedSubview 宽度歧义
+        [row.leadingAnchor  constraintEqualToAnchor:container.leadingAnchor constant:2.0],
+        [row.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-2.0],
+        [container.heightAnchor constraintEqualToConstant:24.0]
+    ]];
+    return container;
+}
+
+/// 横屏侧栏底部版本脚注:「Metal · 26.2」/「v5.1.0」(E-glass 行 106,E-land 行 19)。
+/// 侧栏卡片窄(iPhone 横屏仅 56pt),两段并排放不下 ⇒ 竖排两行,居中,仍是"一行版本信息"的语义。
+- (UIView *)buildVersionFooterView {
+    UIView *container = [[UIView alloc] init];
+    container.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UILabel *l1 = [self footNoteLabelWithText:@"Metal · 26.2"];
+    UILabel *l2 = [self footNoteLabelWithText:@"v5.1.0"];
+
+    UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[l1, l2]];
+    col.translatesAutoresizingMaskIntoConstraints = NO;
+    col.axis = UILayoutConstraintAxisVertical;
+    col.alignment = UIStackViewAlignmentCenter;
+    col.spacing = 1.0;
+    col.userInteractionEnabled = NO;
+    [container addSubview:col];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [col.centerXAnchor constraintEqualToAnchor:container.centerXAnchor],
+        [col.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
+        // 等号:让 container 宽度由内容唯一确定(见品牌头同处理)
+        [col.leadingAnchor  constraintEqualToAnchor:container.leadingAnchor constant:2.0],
+        [col.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-2.0],
+        [container.heightAnchor constraintEqualToConstant:22.0]
+    ]];
+    return container;
+}
+
+- (UILabel *)footNoteLabelWithText:(NSString *)text {
+    UILabel *lbl = [[UILabel alloc] init];
+    lbl.translatesAutoresizingMaskIntoConstraints = NO;
+    lbl.text = text;
+    lbl.font = [UIFont systemFontOfSize:8.0 weight:UIFontWeightRegular];
+    lbl.textColor = E2DimColor();
+    lbl.textAlignment = NSTextAlignmentCenter;
+    lbl.adjustsFontSizeToFitWidth = YES;
+    lbl.minimumScaleFactor = 0.7;
+    return lbl;
+}
+
+#pragma mark - ★ [E2] 菜单按钮(图标在上、文字在下)
+
 - (UIButton *)createMenuButtonWithItem:(NSDictionary *)item index:(NSInteger)index {
-    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
     btn.translatesAutoresizingMaskIntoConstraints = NO;
     btn.tag = index;
+
+    // 统一圆角:横屏选中态是"蓝底白字"(E-glass 行 101 / E-land 行 15,圆角 9-11)
+    btn.layer.cornerRadius = 10.0;
+    btn.layer.masksToBounds = YES;
+    btn.backgroundColor = [UIColor clearColor];
 
     // ★ 占位项(原 AI 位置):尺寸与普通按钮一致,但不可见、不可点 ⇒ 保持间距几何不变
     if ([item[@"placeholder"] boolValue]) {
         btn.userInteractionEnabled = NO;
-        btn.backgroundColor = [UIColor clearColor];
         btn.tintColor = [UIColor clearColor];
-        btn.titleLabel.text = @"";
         return btn;
     }
 
-    // 设置图标
-    UIImage *icon = [UIImage systemImageNamed:item[@"icon"]];
-    [btn setImage:icon forState:UIControlStateNormal];
+    // 图标(上)
+    UIImageView *iconView = [[UIImageView alloc] init];
+    iconView.translatesAutoresizingMaskIntoConstraints = NO;
+    iconView.tag = kE2IconTag;
+    iconView.contentMode = UIViewContentModeScaleAspectFit;
+    iconView.userInteractionEnabled = NO;
+    [btn addSubview:iconView];
 
-    // 设置颜色 - 选中项高亮
-    // 支持自定义字体颜色：用户在设置中配置 general.text_color 后，
-    // 未选中项使用自定义颜色，选中项保持高亮蓝色
-    UIColor *normalColor = [self menuNormalColor];
-    UIColor *accent = accentColor();
-    if (index == self.selectedIndex) {
-        btn.tintColor = accent;
-    } else {
-        btn.tintColor = normalColor;
-    }
+    // 文字(下)
+    UILabel *titleLbl = [[UILabel alloc] init];
+    titleLbl.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLbl.tag = kE2LabelTag;
+    titleLbl.textAlignment = NSTextAlignmentCenter;
+    titleLbl.numberOfLines = 1;
+    titleLbl.adjustsFontSizeToFitWidth = YES;
+    titleLbl.minimumScaleFactor = 0.7;
+    titleLbl.userInteractionEnabled = NO;
+    [btn addSubview:titleLbl];
 
-    // 设置标题（在图标下方）
-    btn.titleLabel.font = [UIFont systemFontOfSize:10];
-    [btn setTitle:item[@"title"] forState:UIControlStateNormal];
-    [btn setTitleColor:(index == self.selectedIndex) ? accent : normalColor forState:UIControlStateNormal];
-    
-    // 垂直布局：图标在上，文字在下
-    btn.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
-    btn.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
-    btn.titleEdgeInsets = UIEdgeInsetsMake(30, -30, 0, 0);
-    btn.imageEdgeInsets = UIEdgeInsetsMake(-10, 0, 0, 0);
-    
+    // 图标在上、文字在下(竖排 UIStackView 居中) —— 比手调 titleEdgeInsets/imageEdgeInsets 更稳，
+    // 不会随朝向/尺寸变化而错位(这正是原实现"竖屏下菜单错位"的根因)。
+    UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[iconView, titleLbl]];
+    col.translatesAutoresizingMaskIntoConstraints = NO;
+    col.axis = UILayoutConstraintAxisVertical;
+    col.alignment = UIStackViewAlignmentCenter;
+    col.spacing = 2.0;
+    col.userInteractionEnabled = NO;
+    [btn addSubview:col];
+
+    NSLayoutConstraint *iw = [iconView.widthAnchor  constraintEqualToConstant:kE2PortraitIconSize];
+    NSLayoutConstraint *ih = [iconView.heightAnchor constraintEqualToConstant:kE2PortraitIconSize];
+    NSLayoutConstraint *lblW = [titleLbl.widthAnchor constraintLessThanOrEqualToAnchor:btn.widthAnchor constant:-2.0];
+    lblW.priority = UILayoutPriorityRequired;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [col.centerXAnchor constraintEqualToAnchor:btn.centerXAnchor],
+        [col.centerYAnchor constraintEqualToAnchor:btn.centerYAnchor],
+        [col.leadingAnchor  constraintGreaterThanOrEqualToAnchor:btn.leadingAnchor constant:2.0],
+        [col.trailingAnchor constraintLessThanOrEqualToAnchor:btn.trailingAnchor constant:-2.0],
+        iw, ih, lblW
+    ]];
+
     [btn addTarget:self action:@selector(menuButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
-
-    // 统一圆角：防御性设置 10pt，避免后续给选中态加背景高亮时出现直角方块
-    btn.layer.cornerRadius = 10;
-    btn.layer.masksToBounds = YES;
-
     return btn;
 }
 
@@ -217,6 +498,8 @@
 
 - (void)menuButtonTapped:(UIButton *)sender {
     NSInteger index = sender.tag;
+    if (index < 0 || index >= (NSInteger)self.menuItems.count) return;
+    if ([self.menuItems[index][@"placeholder"] boolValue]) return;
 
     // FCL 风格：选中菜单项时添加弹跳动画（ScaleX/ScaleY 弹跳，OvershootInterpolator 效果）
     [UIView animateWithDuration:0.3
@@ -229,7 +512,7 @@
     } completion:^(BOOL finished) {
         [UIView animateWithDuration:0.2
                               delay:0
-                            options:UIViewAnimationOptionCurveEaseOut
+                            options:UIViewAnimationCurveEaseOut
                          animations:^{
             sender.transform = CGAffineTransformIdentity;
         } completion:nil];
@@ -239,36 +522,56 @@
     self.selectedIndex = index;
     [self updateButtonColors];
 
-    // 回调
-    NSString *title = self.menuItems[index][@"title"];
+    // 回调(上报当前朝向下的命名)
+    NSString *title = self.compactLayout ? self.menuItems[index][@"portrait"]
+                                         : self.menuItems[index][@"landscape"];
     if (self.onMenuItemSelected) {
-        self.onMenuItemSelected(index, title);
+        self.onMenuItemSelected(index, title ?: @"");
     }
 
     // 处理导航
     [self handleMenuSelection:index];
 }
 
+/// 刷新所有菜单按钮的颜色(SPEC §2.1 令牌 + 保留用户自定义文字色)。
+/// 竖屏(底部标签栏):选中 = 强调蓝文字/图标,无底色(E-glass 行 62)。
+/// 横屏(左侧栏):选中 = 强调蓝底 + 白字(E-glass 行 101 / E-land 行 15);未选中 = fg 文字 + dim 图标。
 - (void)updateButtonColors {
-    UIColor *normalColor = [self menuNormalColor];
-    UIColor *accent = accentColor();
-    // 按钮现在在 menuStackView.arrangedSubviews 中（UIStackView 重构后）
-    for (UIView *view in self.menuStackView.arrangedSubviews) {
-        if ([view isKindOfClass:[UIButton class]]) {
-            UIButton *btn = (UIButton *)view;
-            NSInteger index = btn.tag;
+    UIColor *accent = E2AccentColor();
+    UIColor *custom = [self customTextColor];
 
-            if (index == self.selectedIndex) {
-                btn.tintColor = accent;
-                [btn setTitleColor:accent forState:UIControlStateNormal];
-                // FCL 风格：选中项添加半透明背景高亮
-                btn.backgroundColor = [accent colorWithAlphaComponent:0.15];
+    for (UIButton *btn in self.menuButtons) {
+        NSInteger idx = btn.tag;
+        if (idx < 0 || idx >= (NSInteger)self.menuItems.count) continue;
+        NSDictionary *item = self.menuItems[idx];
+        if ([item[@"placeholder"] boolValue]) { btn.backgroundColor = [UIColor clearColor]; continue; }
+
+        UIImageView *iconView = (UIImageView *)[btn viewWithTag:kE2IconTag];
+        UILabel *titleLbl = (UILabel *)[btn viewWithTag:kE2LabelTag];
+        BOOL selected = (idx == self.selectedIndex);
+
+        UIColor *labelColor;
+        UIColor *iconColor;
+        UIColor *bg;
+
+        if (selected) {
+            UIColor *onColor = self.compactLayout ? accent : [UIColor whiteColor];
+            labelColor = onColor;
+            iconColor  = onColor;
+            bg = self.compactLayout ? [UIColor clearColor] : accent;
+        } else {
+            if (custom) {
+                labelColor = custom;
+                iconColor  = custom;
             } else {
-                btn.tintColor = normalColor;
-                [btn setTitleColor:normalColor forState:UIControlStateNormal];
-                btn.backgroundColor = [UIColor clearColor];
+                labelColor = self.compactLayout ? E2DimColor() : E2ForegroundColor();
+                iconColor  = E2DimColor();
             }
+            bg = [UIColor clearColor];
         }
+        titleLbl.textColor = labelColor;
+        iconView.tintColor = iconColor;
+        btn.backgroundColor = bg;
     }
 }
 
@@ -285,17 +588,20 @@
 }
 
 - (void)dealloc {
+    [self.menuIconSelfHealTimer invalidate];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
-// 未选中菜单项的颜色：优先使用用户自定义的 general.text_color，否则默认 systemGray
-- (UIColor *)menuNormalColor {
+#pragma mark - ★ [E2] 颜色令牌辅助
+
+/// 用户自定义文字色(设置页 general.text_color)——保留主界面自定义能力(brief 硬约束)。
+/// 未设置返回 nil,由调用方回落到 SPEC §2.1 的 dim/fg 令牌。
+- (UIColor *)customTextColor {
     NSString *hex = getPrefObject(@"general.text_color");
     if (hex.length > 0) {
-        UIColor *custom = [self colorFromHexString:hex];
-        if (custom) return custom;
+        return [self colorFromHexString:hex];
     }
-    return [UIColor systemGrayColor];
+    return nil;
 }
 
 - (UIColor *)colorFromHexString:(NSString *)hexString {
@@ -317,26 +623,47 @@
     return [UIColor colorWithRed:r/255.0 green:g/255.0 blue:b/255.0 alpha:a/255.0];
 }
 
+/// SF Symbol 取图:统一 point size/weight,避免不同调用点尺寸不一(SPEC §2.6 图标风格)。
+- (UIImage *)menuIconNamed:(NSString *)name {
+    if (name.length == 0) return nil;
+    UIImageSymbolConfiguration *cfg =
+        [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:UIImageSymbolWeightMedium];
+    UIImage *img = [UIImage systemImageNamed:name withConfiguration:cfg];
+    if (!img) img = [UIImage systemImageNamed:name];   // 兜底:退回默认配置
+    return img;
+}
+
+#pragma mark - Navigation
+
+/// 导航映射(沿用既有通知名,不改父控制器行为):
+///   0 实例   → ShowHomePage(主页/实例页)
+///   1 下载   → ShowDownloadPage
+///   2 占位   → 无(不可点)
+///   3 资源   → ShowVersionManager(资源/版本管理,沿用原 index 3 语义)
+///   4 多人游戏 → ShowMultiplayer(E-land 侧栏第 4 项;父控制器当前未监听 ⇒ 暂为空操作)
+///   5 设置   → ShowSettings
 - (void)handleMenuSelection:(NSInteger)index {
     switch (index) {
-        case 0: // 主页
-            // 通知父控制器切换到新闻页
+        case 0: // 实例 / 主页
             [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowHomePage" object:nil];
             break;
 
-        case 1: // 下载
+        case 1: // 下载 / 下载中心
             [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowDownloadPage" object:nil];
             break;
 
-        case 2: // AI 助手
-            [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowAIPage" object:nil];
+        case 2: // 灵动岛占位(不可点,不会到达)
             break;
 
-        case 3: // 版本管理（合并了原"当前版本设置"功能）
+        case 3: // 资源 / 资源管理(版本管理,合并了原"当前版本设置"功能)
             [self showVersionManager];
             break;
 
-        case 4: // 设置（联机入口暂时移除，恢复时顺延 index）
+        case 4: // 多人游戏(横屏独有)
+            [self showMultiplayer];
+            break;
+
+        case 5: // 设置
             [self showSettings];
             break;
     }
@@ -384,43 +711,51 @@
     return UIInterfaceOrientationMaskAllButUpsideDown;
 }
 
+/// 深浅色切换:标签颜色用 dynamic color 自动跟随,这里再刷一遍以防自定义色/底色残留。
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (@available(iOS 13.0, *)) {
+        if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
+            [self updateButtonColors];
+        }
+    }
+}
 
 #pragma mark - ★ [UI-C] 菜单图标自愈
 
 // 根因(上游 Task102/111):主界面按钮是循环里第一个调用 systemImageNamed: 的控件,
 // 进程冷启动首调用存在 CoreUI 符号注册竞态 —— 首调用偶尔拿到 nil,后续调用全部正常,
 // 症状固定为"只有主界面图标消失,其他按钮都在"。这里用 0.25s×40 的有界重试 + 强制重设兜底。
+// [E2] 图标改为按钮内的独立 UIImageView(图标在上/文字在下),自愈目标随之改到该 imageView。
 - (void)refreshMenuIconImages {
     [self refreshMenuIconImagesForced:NO];
 }
 
 - (void)refreshMenuIconImagesForced:(BOOL)forced {
-    for (UIView *view in self.menuStackView.arrangedSubviews) {
-        if (![view isKindOfClass:[UIButton class]]) continue;
-        UIButton *btn = (UIButton *)view;
-        NSInteger idx = btn.tag;
-        if (idx < 0 || idx >= (NSInteger)self.menuItems.count) continue;
-        UIImage *current = [btn imageForState:UIControlStateNormal];
-        if (!forced && current) continue;
-        NSString *iconName = self.menuItems[idx][@"icon"];
+    for (NSInteger i = 0; i < self.menuButtons.count; i++) {
+        UIButton *btn = self.menuButtons[i];
+        if (i >= (NSInteger)self.menuItems.count) continue;
+        NSString *iconName = self.menuItems[i][@"icon"];
         if (iconName.length == 0) continue;              // 占位项没有图标
-        UIImage *icon = [UIImage systemImageNamed:iconName];
+        UIImageView *iconView = (UIImageView *)[btn viewWithTag:kE2IconTag];
+        if (!iconView) continue;
+        if (!forced && iconView.image) continue;
+        UIImage *icon = [self menuIconNamed:iconName];
         if (!icon) continue;
-        [btn setImage:icon forState:UIControlStateNormal];
-        UIView *iconView = btn.imageView;
-        if (iconView && iconView.superview == btn) { [btn bringSubviewToFront:iconView]; }
+        iconView.image = icon;
+        iconView.hidden = NO;
+        [btn bringSubviewToFront:iconView];
     }
 }
 
 - (BOOL)allMenuIconsLoaded {
-    for (UIView *view in self.menuStackView.arrangedSubviews) {
-        if (![view isKindOfClass:[UIButton class]]) continue;
-        UIButton *btn = (UIButton *)view;
-        NSInteger idx = btn.tag;
-        if (idx < 0 || idx >= (NSInteger)self.menuItems.count) continue;
-        NSString *iconName = self.menuItems[idx][@"icon"];
+    for (NSInteger i = 0; i < self.menuButtons.count; i++) {
+        UIButton *btn = self.menuButtons[i];
+        if (i >= (NSInteger)self.menuItems.count) continue;
+        NSString *iconName = self.menuItems[i][@"icon"];
         if (iconName.length == 0) continue;              // 占位项不计
-        if (![btn imageForState:UIControlStateNormal]) return NO;
+        UIImageView *iconView = (UIImageView *)[btn viewWithTag:kE2IconTag];
+        if (!iconView.image) return NO;
     }
     return YES;
 }

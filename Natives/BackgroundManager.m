@@ -22,6 +22,135 @@ static const NSInteger kBackgroundBlurTag = 99997;
 static const NSInteger kBackgroundDimTag = 99996;
 static const NSInteger kDefaultBackgroundTag = 99995;
 
+#pragma mark - ★ [E3] 默认背景渐变视图(SPEC §2.1:深=紫蓝 / 浅=白→粉紫)
+//
+// 未设自定义背景图/视频时的默认背景。原实现是平面 systemBackgroundColor(深黑/浅白),
+// 与 E 稿「深 = 紫蓝渐变 / 浅 = 白→粉紫渐变」不符。
+// 本视图自绘渐变(base 线性 + 3 个椭圆径向光斑),仅当 currentType == BackgroundTypeNone
+// (无自定义背景)时挂载 ⇒ 不触碰自定义背景图/视频路径,主界面自定义能力保留。
+@interface AmeGradientBackgroundView : UIView
+@end
+
+@implementation AmeGradientBackgroundView {
+    CGSize _ameLastLayoutSize;
+}
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        self.userInteractionEnabled = NO;
+        self.opaque = YES;
+        self.backgroundColor = [UIColor clearColor];
+    }
+    return self;
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (@available(iOS 13.0, *)) {
+        if (previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle) {
+            [self setNeedsDisplay];
+        }
+    }
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    // 尺寸变化(旋转/分屏)后重绘,保证渐变铺满
+    if (!CGSizeEqualToSize(_ameLastLayoutSize, self.bounds.size)) {
+        _ameLastLayoutSize = self.bounds.size;
+        [self setNeedsDisplay];
+    }
+}
+
+- (void)drawRect:(CGRect)rect {
+    BOOL dark = YES;
+    if (@available(iOS 13.0, *)) {
+        dark = (self.traitCollection.userInterfaceStyle != UIUserInterfaceStyleLight);
+    }
+    [AmeGradientBackgroundView ame_drawDefaultBackgroundInRect:self.bounds dark:dark];
+}
+
+// 一个椭圆径向渐变(CSS radial(rx ry at x y) 用 CTM 缩放近似:先画圆再压扁)
++ (void)ame_drawRadialInContext:(CGContextRef)ctx
+                         center:(CGPoint)c
+                             rx:(CGFloat)rx
+                             ry:(CGFloat)ry
+                          color:(UIColor *)color
+                           stop:(CGFloat)stop {
+    if (rx <= 0.0 || ry <= 0.0 || color == nil) { return; }
+    CGFloat r = 0.0, g = 0.0, b = 0.0, a = 1.0;
+    if (![color getRed:&r green:&g blue:&b alpha:&a]) {
+        const CGFloat *cs = CGColorGetComponents(color.CGColor);
+        size_t n = CGColorGetNumberOfComponents(color.CGColor);
+        if (cs != NULL) {
+            r = cs[0]; g = cs[1]; b = cs[2]; a = (n >= 4) ? cs[3] : 1.0;
+        }
+    }
+    CGFloat comps[8] = { r, g, b, a, r, g, b, 0.0 };
+    CGFloat locs[2]  = { 0.0, MAX(0.01, MIN(1.0, stop)) };
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGGradientRef grad = CGGradientCreateWithColorComponents(space, comps, locs, 2);
+    CGContextSaveGState(ctx);
+    CGContextTranslateCTM(ctx, c.x, c.y);
+    CGContextScaleCTM(ctx, 1.0, ry / rx);            // 圆 → 椭圆
+    CGContextDrawRadialGradient(ctx, grad, CGPointZero, 0.0, CGPointZero, rx,
+                                kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
+    CGContextRestoreGState(ctx);
+    CGGradientRelease(grad);
+    CGColorSpaceRelease(space);
+}
+
++ (void)ame_drawDefaultBackgroundInRect:(CGRect)b dark:(BOOL)dark {
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (ctx == NULL || b.size.width <= 0.0 || b.size.height <= 0.0) { return; }
+    const CGFloat W = b.size.width, H = b.size.height;
+
+    UIColor *base0 = nil, *base1 = nil, *r1 = nil, *r2 = nil, *r3 = nil;
+    CGFloat r1x = 0.9 * W, r1y = 0.70 * H, r1s = 0.60;   // 蓝光斑
+    CGFloat r2x = 0.9 * W, r2y = 0.80 * H, r2s = 0.55;   // 品红/粉光斑
+    CGFloat r3x = 0.8 * W, r3y = 0.70 * H, r3s = 0.60;   // 青色/薄荷光斑
+    if (dark) {
+        // 深色:紫蓝渐变  base #101322 → #05060c
+        base0 = AmeRGBA(0x10, 0x13, 0x22, 1.0);
+        base1 = AmeRGBA(0x05, 0x06, 0x0C, 1.0);
+        r1 = AmeRGBA(90, 130, 255, 0.55);
+        r2 = AmeRGBA(210, 90, 220, 0.50);
+        r3 = AmeRGBA(0, 220, 200, 0.32);
+    } else {
+        // 浅色:白→粉紫  base #eef3ff → #fdf8ff
+        base0 = AmeRGBA(0xEE, 0xF3, 0xFF, 1.0);
+        base1 = AmeRGBA(0xFD, 0xF8, 0xFF, 1.0);
+        r1 = AmeRGBA(150, 185, 255, 0.90);
+        r2 = AmeRGBA(255, 175, 235, 0.85);
+        r3 = AmeRGBA(160, 240, 225, 0.70);
+    }
+
+    // 线性底(top → bottom)
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGGradientRef baseGrad = CGGradientCreateWithColors(space,
+        (__bridge CFArrayRef)@[(id)base0.CGColor, (id)base1.CGColor], NULL);
+    CGContextDrawLinearGradient(ctx, baseGrad,
+                                CGPointMake(CGRectGetMinX(b), CGRectGetMinY(b)),
+                                CGPointMake(CGRectGetMinX(b), CGRectGetMaxY(b)), 0);
+    CGGradientRelease(baseGrad);
+    CGColorSpaceRelease(space);
+
+    // 三个径向光斑(坐标 = CSS 的 at x% y%)
+    [self ame_drawRadialInContext:ctx
+                           center:CGPointMake(CGRectGetMinX(b) + 0.12 * W, CGRectGetMinY(b) + 0.00 * H)
+                               rx:r1x ry:r1y color:r1 stop:r1s];
+    [self ame_drawRadialInContext:ctx
+                           center:CGPointMake(CGRectGetMinX(b) + 0.92 * W, CGRectGetMinY(b) + 0.22 * H)
+                               rx:r2x ry:r2y color:r2 stop:r2s];
+    [self ame_drawRadialInContext:ctx
+                           center:CGPointMake(CGRectGetMinX(b) + 0.40 * W, CGRectGetMinY(b) + 1.00 * H)
+                               rx:r3x ry:r3y color:r3 stop:r3s];
+}
+
+@end
+
 @interface BackgroundManager ()
 @property (nonatomic, strong) AVPlayer *videoPlayer;
 @property (nonatomic, strong) AVPlayerLayer *videoPlayerLayer;
@@ -31,6 +160,10 @@ static const NSInteger kDefaultBackgroundTag = 99995;
 @property (nonatomic, weak) UIWindow *currentWindow;
 @property (nonatomic, weak) UISplitViewController *currentSplitVC;
 @property (nonatomic, strong, readwrite, nullable) UIView *globalBackgroundContainer;
+// ★ [E3] 记住默认渐变宿主(removeGlobalBackground 的 currentWindow 会被置 nil,需单独持弱引用清理)
+@property (nonatomic, weak) UIView *ameDefaultGradientHost;
+// ★ [E3] 私有:把默认渐变背景挂到宿主(window / splitVC.view)
+- (void)ame_applyDefaultGradientToHost:(UIView *)host;
 @end
 
 @implementation BackgroundManager
@@ -195,11 +328,10 @@ static const NSInteger kDefaultBackgroundTag = 99995;
     // systemBackgroundColor 在浅色模式为白、深色模式为黑，自动适配。
     // 为避免状态栏区域透出纯黑，使用 systemBackground 而非纯黑。
     if (self.currentType == BackgroundTypeNone) {
-        if (@available(iOS 13.0, *)) {
-            window.backgroundColor = [UIColor systemBackgroundColor];
-        } else {
-            window.backgroundColor = [UIColor colorWithWhite:0.08 alpha:1.0];
-        }
+        // ★ [E3] SPEC §2.1:未设自定义背景时改用默认渐变(深=紫蓝 / 浅=白→粉紫)。
+        //   原值:window.backgroundColor = systemBackgroundColor(深黑/浅白,平面无色)
+        //   新值:挂 AmeGradientBackgroundView —— 仅无自定义背景时生效,自定义背景路径不受影响
+        [self ame_applyDefaultGradientToHost:window];
         return;
     }
     
@@ -242,11 +374,8 @@ static const NSInteger kDefaultBackgroundTag = 99995;
     // No need for container or transparency
     // 修复：使用 systemBackgroundColor 自适应浅色/深色模式
     if (self.currentType == BackgroundTypeNone) {
-        if (@available(iOS 13.0, *)) {
-            splitVC.view.backgroundColor = [UIColor systemBackgroundColor];
-        } else {
-            splitVC.view.backgroundColor = [UIColor colorWithWhite:0.08 alpha:1.0];
-        }
+        // ★ [E3] SPEC §2.1:默认渐变背景(同 window 路径;原为平面 systemBackgroundColor)
+        [self ame_applyDefaultGradientToHost:splitVC.view];
         return;
     }
     
@@ -287,6 +416,22 @@ static const NSInteger kDefaultBackgroundTag = 99995;
     if (self.currentSplitVC && self.currentSplitVC.view) {
         UIView *existing = [self.currentSplitVC.view viewWithTag:kGlobalBackgroundTag];
         if (existing) [existing removeFromSuperview];
+    }
+    
+    // ★ [E3] 同时移除默认渐变背景 —— 切自定义背景 / 清空背景时必须清掉,否则会盖住后续内容
+    if (self.currentWindow) {
+        UIView *dg = [self.currentWindow viewWithTag:kDefaultBackgroundTag];
+        if (dg) [dg removeFromSuperview];
+    }
+    if (self.currentSplitVC && self.currentSplitVC.view) {
+        UIView *dg = [self.currentSplitVC.view viewWithTag:kDefaultBackgroundTag];
+        if (dg) [dg removeFromSuperview];
+    }
+    // ★ [E3] 兜底:通过弱持有的宿主清理(切背景时 currentWindow/currentSplitVC 可能已被置 nil)
+    if (self.ameDefaultGradientHost) {
+        UIView *dg = [self.ameDefaultGradientHost viewWithTag:kDefaultBackgroundTag];
+        if (dg) [dg removeFromSuperview];
+        self.ameDefaultGradientHost = nil;
     }
     
     // Cleanup
@@ -333,25 +478,32 @@ static const NSInteger kDefaultBackgroundTag = 99995;
 
 #pragma mark - Background Content Application
 
+// ★ [E3] 把默认渐变背景挂到宿主(window / splitVC.view)。仅无自定义背景时调用。
+- (void)ame_applyDefaultGradientToHost:(UIView *)host {
+    if (!host) return;
+    UIView *existing = [host viewWithTag:kDefaultBackgroundTag];
+    if (existing) [existing removeFromSuperview];
+
+    AmeGradientBackgroundView *g = [[AmeGradientBackgroundView alloc] initWithFrame:host.bounds];
+    g.tag = kDefaultBackgroundTag;
+    [host insertSubview:g atIndex:0];
+    self.ameDefaultGradientHost = host;   // ★ [E3] 弱持有,便于清理
+    // 兜底底色(与渐变基色一致,避免首帧/渐变外露黑)
+    host.backgroundColor = AmeDynamicColor(AmeRGBA(0x10, 0x13, 0x22, 1.0),
+                                           AmeRGBA(0xEE, 0xF3, 0xFF, 1.0));
+}
+
 - (void)applyDefaultBackgroundToContainer:(UIView *)container {
     // Remove existing default background
     UIView *existing = [container viewWithTag:kDefaultBackgroundTag];
     if (existing) [existing removeFromSuperview];
-    
-    // Create default background view that adapts to system appearance
-    UIView *defaultBackgroundView = [[UIView alloc] initWithFrame:container.bounds];
+
+    // ★ [E3] SPEC §2.1:默认背景改为「深=紫蓝 / 浅=白→粉紫」渐变。
+    //   原值:平面 systemBackgroundColor(深黑/浅白,与 E 稿不符)
+    //   新值:AmeGradientBackgroundView(随 traitCollection 自动切换深浅)
+    AmeGradientBackgroundView *defaultBackgroundView =
+        [[AmeGradientBackgroundView alloc] initWithFrame:container.bounds];
     defaultBackgroundView.tag = kDefaultBackgroundTag;
-    defaultBackgroundView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    
-    // Use system background color that adapts to light/dark mode
-    // In dark mode: black, In light mode: system background color
-    if (@available(iOS 13.0, *)) {
-        defaultBackgroundView.backgroundColor = [UIColor systemBackgroundColor];
-    } else {
-        // Fallback for iOS < 13
-        defaultBackgroundView.backgroundColor = [UIColor blackColor];
-    }
-    
     [container addSubview:defaultBackgroundView];
 }
 
@@ -503,6 +655,9 @@ static const NSInteger kDefaultBackgroundTag = 99995;
             UIVisualEffect *blur = AmeGlassEffect(UIBlurEffectStyleSystemMaterial);   // ★ 列表行玻璃
             UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blur];
             blurView.frame = cell.bounds;
+            // ★ [E3] SPEC §2:玻璃底 + blur 26 / saturate 180%
+            blurView.contentView.backgroundColor = AmeGlassFillColor();
+            AmeTuneGlassBackdrop(blurView, AmeGlassBlurRadius, AmeGlassSaturate);
             // ★ 玻璃质感(与面板一致)
             AmeAttachGlassRim(cell.contentView, cell.contentView.layer.cornerRadius);
             AmeAttachGlassRim(cell, cell.layer.cornerRadius);
@@ -776,6 +931,9 @@ static const NSInteger kDefaultBackgroundTag = 99995;
 
         [view insertSubview:blurView atIndex:0];
         view.backgroundColor = [UIColor clearColor];
+        // ★ [E3] SPEC §2 设计令牌:玻璃底填充(glass 深.10/浅.55)+ blur 26 / saturate 180%
+        blurView.contentView.backgroundColor = AmeGlassFillColor();
+        AmeTuneGlassBackdrop(blurView, AmeGlassBlurRadius, AmeGlassSaturate);
         // ★ 玻璃质感:高光描边 + 上缘内高光(不依赖 iOS 26 SDK)
         AmeAttachGlassRim(view, view.layer.cornerRadius);
         // ★ [UI-B] 修复(2026-10-02):AmeRefreshGlassRim 全工程原本 0 个调用者
@@ -825,6 +983,8 @@ static const NSInteger kDefaultBackgroundTag = 99995;
         blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         blurView.layer.cornerRadius = cell.contentView.layer.cornerRadius;
         blurView.layer.masksToBounds = YES;
+        // ★ [E3] SPEC §2.5:blur 26 / saturate 180%(尽力落到系统材质,失败回退默认并打日志)
+        AmeTuneGlassBackdrop(blurView, AmeGlassBlurRadius, AmeGlassSaturate);
 
         [cell.contentView insertSubview:blurView atIndex:0];
         cell.backgroundColor = [UIColor clearColor];
