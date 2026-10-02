@@ -11,12 +11,3 @@
 [submodule "Natives/external/ZeroTierFramework"]
 	path = Natives/external/ZeroTierFramework
 	url = https://github.com/zerotier/zerotier-sockets-apple-framework.git
-[submodule "Natives/external/MobileGlues/MobileGlues-cpp/3rdparty/glslang"]
-	path = Natives/external/MobileGlues/MobileGlues-cpp/3rdparty/glslang
-	url = https://github.com/KhronosGroup/glslang.git
-[submodule "Natives/external/MobileGlues/MobileGlues-cpp/3rdparty/SPIRV-Cross"]
-	path = Natives/external/MobileGlues/MobileGlues-cpp/3rdparty/SPIRV-Cross
-	url = https://github.com/KhronosGroup/SPIRV-Cross.git
-[submodule "Natives/external/MobileGlues/MobileGlues-cpp/3rdparty/xxhash"]
-	path = Natives/external/MobileGlues/MobileGlues-cpp/3rdparty/xxhash
-	url = https://github.com/stbrumme/xxhash.git
