@@ -1,0 +1,599 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A13000000000000000000001 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = A11000000000000000000001 /* main.m */; };
+		A13000000000000000000002 /* UITestHostAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = A11000000000000000000003 /* UITestHostAppDelegate.m */; };
+		A13000000000000000000003 /* AmethystShellTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A11000000000000000000005 /* AmethystShellTests.m */; };
+		A13000000000000000000005 /* AMESnapshotHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = A1100000000000000000000D /* AMESnapshotHelper.m */; };
+		A13000000000000000000006 /* AmethystSnapshotTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A1100000000000000000000E /* AmethystSnapshotTests.m */; };
+		B13000000000000000000001 /* testThemeButtonImage.rgba in Resources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000001 /* testThemeButtonImage.rgba */; };
+		B13000000000000000000002 /* testThemeButtonDescription.txt in Resources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000002 /* testThemeButtonDescription.txt */; };
+		B13000000000000000000003 /* testHostRootDescription.txt in Resources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000003 /* testHostRootDescription.txt */; };
+		B13000000000000000000005 /* testThemeAccent-Teal.rgba in Resources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000006 /* testThemeAccent-Teal.rgba */; };
+		B13000000000000000000006 /* testThemeAccent-Orange.rgba in Resources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000007 /* testThemeAccent-Orange.rgba */; };
+		B13000000000000000000007 /* testThemeAccent-Pink.rgba in Resources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000008 /* testThemeAccent-Pink.rgba */; };
+		B13000000000000000000008 /* testThemeAccent-Indigo.rgba in Resources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000009 /* testThemeAccent-Indigo.rgba */; };
+		B13000000000000000000009 /* testThemeAccent-Violet.rgba in Resources */ = {isa = PBXBuildFile; fileRef = B1100000000000000000000A /* testThemeAccent-Violet.rgba */; };
+		B1300000000000000000000A /* testMarqueeLabelImage.rgba in Resources */ = {isa = PBXBuildFile; fileRef = B1100000000000000000000B /* testMarqueeLabelImage.rgba */; };
+		B1300000000000000000000B /* testMarqueeLabelDescription.txt in Resources */ = {isa = PBXBuildFile; fileRef = B1100000000000000000000C /* testMarqueeLabelDescription.txt */; };
+		B13000000000000000000004 /* MarqueeLabel.m in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000005 /* MarqueeLabel.m */; };
+		B1300000000000000000000C /* CustomControlsUtils.m in Sources */ = {isa = PBXBuildFile; fileRef = B1100000000000000000000D /* CustomControlsUtils.m */; };
+		B1300000000000000000000D /* ScreenUtils.m in Sources */ = {isa = PBXBuildFile; fileRef = B1100000000000000000000E /* ScreenUtils.m */; };
+		B1300000000000000000000E /* AMEEngineStubs.m in Sources */ = {isa = PBXBuildFile; fileRef = B1100000000000000000000F /* AMEEngineStubs.m */; };
+		B1300000000000000000000F /* AmethystEngineTests.m in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000010 /* AmethystEngineTests.m */; };
+		B13000000000000000000010 /* DownloadInstallerService.m in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000011 /* DownloadInstallerService.m */; };
+		B13000000000000000000011 /* AmethystInstallerServiceTests.m in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000012 /* AmethystInstallerServiceTests.m */; };
+		B13000000000000000000012 /* AmethystCanvasLayoutTests.m in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000013 /* AmethystCanvasLayoutTests.m */; };
+		B13000000000000000000013 /* BackgroundManager.m in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000014 /* BackgroundManager.m */; };
+		B13000000000000000000014 /* AmethystBackgroundTests.m in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000015 /* AmethystBackgroundTests.m */; };
+		A13000000000000000000004 /* AmethystAppUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = A11000000000000000000007 /* AmethystAppUITests.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A17000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A12000000000000000000001;
+			remoteInfo = UITestHost;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A11000000000000000000001 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		A11000000000000000000002 /* UITestHostAppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UITestHostAppDelegate.h; sourceTree = "<group>"; };
+		A11000000000000000000003 /* UITestHostAppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = UITestHostAppDelegate.m; sourceTree = "<group>"; };
+		A11000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A11000000000000000000005 /* AmethystShellTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AmethystShellTests.m; sourceTree = "<group>"; };
+		A1100000000000000000000C /* AMESnapshotHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AMESnapshotHelper.h; sourceTree = "<group>"; };
+		A1100000000000000000000D /* AMESnapshotHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AMESnapshotHelper.m; sourceTree = "<group>"; };
+		A1100000000000000000000E /* AmethystSnapshotTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AmethystSnapshotTests.m; sourceTree = "<group>"; };
+		B1100000000000000000000F /* AMEEngineStubs.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AMEEngineStubs.m; sourceTree = "<group>"; };
+		B11000000000000000000010 /* AmethystEngineTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AmethystEngineTests.m; sourceTree = "<group>"; };
+		B11000000000000000000012 /* AmethystInstallerServiceTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AmethystInstallerServiceTests.m; sourceTree = "<group>"; };
+		B11000000000000000000013 /* AmethystCanvasLayoutTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AmethystCanvasLayoutTests.m; sourceTree = "<group>"; };
+		B11000000000000000000015 /* AmethystBackgroundTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AmethystBackgroundTests.m; sourceTree = "<group>"; };
+		B11000000000000000000001 /* testThemeButtonImage.rgba */ = {isa = PBXFileReference; lastKnownFileType = file; path = testThemeButtonImage.rgba; sourceTree = "<group>"; };
+		B11000000000000000000002 /* testThemeButtonDescription.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = testThemeButtonDescription.txt; sourceTree = "<group>"; };
+		B11000000000000000000003 /* testHostRootDescription.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = testHostRootDescription.txt; sourceTree = "<group>"; };
+		B11000000000000000000006 /* testThemeAccent-Teal.rgba */ = {isa = PBXFileReference; lastKnownFileType = file; path = testThemeAccent-Teal.rgba; sourceTree = "<group>"; };
+		B11000000000000000000007 /* testThemeAccent-Orange.rgba */ = {isa = PBXFileReference; lastKnownFileType = file; path = testThemeAccent-Orange.rgba; sourceTree = "<group>"; };
+		B11000000000000000000008 /* testThemeAccent-Pink.rgba */ = {isa = PBXFileReference; lastKnownFileType = file; path = testThemeAccent-Pink.rgba; sourceTree = "<group>"; };
+		B11000000000000000000009 /* testThemeAccent-Indigo.rgba */ = {isa = PBXFileReference; lastKnownFileType = file; path = testThemeAccent-Indigo.rgba; sourceTree = "<group>"; };
+		B1100000000000000000000A /* testThemeAccent-Violet.rgba */ = {isa = PBXFileReference; lastKnownFileType = file; path = testThemeAccent-Violet.rgba; sourceTree = "<group>"; };
+		B1100000000000000000000B /* testMarqueeLabelImage.rgba */ = {isa = PBXFileReference; lastKnownFileType = file; path = testMarqueeLabelImage.rgba; sourceTree = "<group>"; };
+		B1100000000000000000000C /* testMarqueeLabelDescription.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = testMarqueeLabelDescription.txt; sourceTree = "<group>"; };
+		B11000000000000000000004 /* MarqueeLabel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "UI/Common/MarqueeLabel.h"; sourceTree = "<group>"; };
+		B11000000000000000000005 /* MarqueeLabel.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "UI/Common/MarqueeLabel.m"; sourceTree = "<group>"; };
+		B1100000000000000000000D /* CustomControlsUtils.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "customcontrols/CustomControlsUtils.m"; sourceTree = "<group>"; };
+		B1100000000000000000000E /* ScreenUtils.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "ScreenUtils.m"; sourceTree = "<group>"; };
+		B11000000000000000000011 /* DownloadInstallerService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "UI/Download/DownloadInstallerService.m"; sourceTree = "<group>"; };
+		B11000000000000000000014 /* BackgroundManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "BackgroundManager.m"; sourceTree = "<group>"; };
+		A11000000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A11000000000000000000007 /* AmethystAppUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AmethystAppUITests.m; sourceTree = "<group>"; };
+		A11000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A11000000000000000000009 /* UITestHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UITestHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1100000000000000000000A /* AmethystXCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AmethystXCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1100000000000000000000B /* AmethystXCUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AmethystXCUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		A10000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000003 /* TestHost */,
+				A10000000000000000000004 /* AmethystXCTests */,
+				A10000000000000000000005 /* AmethystXCUITests */,
+				A10000000000000000000006 /* Products */,
+				B10000000000000000000003 /* AppSources */,
+			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000003 /* TestHost */ = {
+			isa = PBXGroup;
+			children = (
+				A11000000000000000000001 /* main.m */,
+				A11000000000000000000002 /* UITestHostAppDelegate.h */,
+				A11000000000000000000003 /* UITestHostAppDelegate.m */,
+				A11000000000000000000004 /* Info.plist */,
+			);
+			path = TestHost;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000004 /* AmethystXCTests */ = {
+			isa = PBXGroup;
+			children = (
+				A11000000000000000000005 /* AmethystShellTests.m */,
+				A11000000000000000000006 /* Info.plist */,
+				A1100000000000000000000C /* AMESnapshotHelper.h */,
+				A1100000000000000000000D /* AMESnapshotHelper.m */,
+				A1100000000000000000000E /* AmethystSnapshotTests.m */,
+				B1100000000000000000000F /* AMEEngineStubs.m */,
+				B11000000000000000000010 /* AmethystEngineTests.m */,
+				B11000000000000000000012 /* AmethystInstallerServiceTests.m */,
+				B11000000000000000000013 /* AmethystCanvasLayoutTests.m */,
+				B11000000000000000000015 /* AmethystBackgroundTests.m */,
+				B10000000000000000000001 /* __Snapshots__ */,
+			);
+			path = AmethystXCTests;
+			sourceTree = "<group>";
+		};
+		B10000000000000000000001 /* __Snapshots__ */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000002 /* AmethystSnapshotTests */,
+			);
+			path = __Snapshots__;
+			sourceTree = "<group>";
+		};
+		B10000000000000000000002 /* AmethystSnapshotTests */ = {
+			isa = PBXGroup;
+			children = (
+				B11000000000000000000001 /* testThemeButtonImage.rgba */,
+				B11000000000000000000002 /* testThemeButtonDescription.txt */,
+				B11000000000000000000003 /* testHostRootDescription.txt */,
+				B11000000000000000000006 /* testThemeAccent-Teal.rgba */,
+				B11000000000000000000007 /* testThemeAccent-Orange.rgba */,
+				B11000000000000000000008 /* testThemeAccent-Pink.rgba */,
+				B11000000000000000000009 /* testThemeAccent-Indigo.rgba */,
+				B1100000000000000000000A /* testThemeAccent-Violet.rgba */,
+				B1100000000000000000000B /* testMarqueeLabelImage.rgba */,
+				B1100000000000000000000C /* testMarqueeLabelDescription.txt */,
+			);
+			path = AmethystSnapshotTests;
+			sourceTree = "<group>";
+		};
+		B10000000000000000000003 /* AppSources */ = {
+			isa = PBXGroup;
+			children = (
+				B11000000000000000000004 /* MarqueeLabel.h */,
+				B11000000000000000000005 /* MarqueeLabel.m */,
+				B1100000000000000000000D /* CustomControlsUtils.m */,
+				B1100000000000000000000E /* ScreenUtils.m */,
+				B11000000000000000000011 /* DownloadInstallerService.m */,
+				B11000000000000000000014 /* BackgroundManager.m */,
+			);
+			path = ../Natives;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000005 /* AmethystXCUITests */ = {
+			isa = PBXGroup;
+			children = (
+				A11000000000000000000007 /* AmethystAppUITests.m */,
+				A11000000000000000000008 /* Info.plist */,
+			);
+			path = AmethystXCUITests;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000006 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A11000000000000000000009 /* UITestHost.app */,
+				A1100000000000000000000A /* AmethystXCTests.xctest */,
+				A1100000000000000000000B /* AmethystXCUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A12000000000000000000001 /* UITestHost */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A15000000000000000000002 /* Build configuration list for PBXNativeTarget "UITestHost" */;
+			buildPhases = (
+				A14000000000000000000001 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = UITestHost;
+			productName = UITestHost;
+			productReference = A11000000000000000000009 /* UITestHost.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A12000000000000000000002 /* AmethystXCTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A15000000000000000000003 /* Build configuration list for PBXNativeTarget "AmethystXCTests" */;
+			buildPhases = (
+				A14000000000000000000002 /* Sources */,
+				B14000000000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A17000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = AmethystXCTests;
+			productName = AmethystXCTests;
+			productReference = A1100000000000000000000A /* AmethystXCTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A12000000000000000000003 /* AmethystXCUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A15000000000000000000004 /* Build configuration list for PBXNativeTarget "AmethystXCUITests" */;
+			buildPhases = (
+				A14000000000000000000003 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AmethystXCUITests;
+			productName = AmethystXCUITests;
+			productReference = A1100000000000000000000B /* AmethystXCUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1540;
+			};
+			buildConfigurationList = A15000000000000000000001 /* Build configuration list for PBXProject "AmethystUITests" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A10000000000000000000002;
+			productRefGroup = A10000000000000000000006 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A12000000000000000000001 /* UITestHost */,
+				A12000000000000000000002 /* AmethystXCTests */,
+				A12000000000000000000003 /* AmethystXCUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B14000000000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B13000000000000000000001 /* testThemeButtonImage.rgba in Resources */,
+				B13000000000000000000002 /* testThemeButtonDescription.txt in Resources */,
+				B13000000000000000000003 /* testHostRootDescription.txt in Resources */,
+				B13000000000000000000005 /* testThemeAccent-Teal.rgba in Resources */,
+				B13000000000000000000006 /* testThemeAccent-Orange.rgba in Resources */,
+				B13000000000000000000007 /* testThemeAccent-Pink.rgba in Resources */,
+				B13000000000000000000008 /* testThemeAccent-Indigo.rgba in Resources */,
+				B13000000000000000000009 /* testThemeAccent-Violet.rgba in Resources */,
+				B1300000000000000000000A /* testMarqueeLabelImage.rgba in Resources */,
+				B1300000000000000000000B /* testMarqueeLabelDescription.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A14000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A13000000000000000000001 /* main.m in Sources */,
+				A13000000000000000000002 /* UITestHostAppDelegate.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A14000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A13000000000000000000003 /* AmethystShellTests.m in Sources */,
+				A13000000000000000000005 /* AMESnapshotHelper.m in Sources */,
+				A13000000000000000000006 /* AmethystSnapshotTests.m in Sources */,
+				B13000000000000000000004 /* MarqueeLabel.m in Sources */,
+				B1300000000000000000000C /* CustomControlsUtils.m in Sources */,
+				B1300000000000000000000D /* ScreenUtils.m in Sources */,
+				B1300000000000000000000E /* AMEEngineStubs.m in Sources */,
+				B1300000000000000000000F /* AmethystEngineTests.m in Sources */,
+				B13000000000000000000010 /* DownloadInstallerService.m in Sources */,
+				B13000000000000000000011 /* AmethystInstallerServiceTests.m in Sources */,
+				B13000000000000000000012 /* AmethystCanvasLayoutTests.m in Sources */,
+				B13000000000000000000013 /* BackgroundManager.m in Sources */,
+				B13000000000000000000014 /* AmethystBackgroundTests.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A14000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A13000000000000000000004 /* AmethystAppUITests.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A17000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A12000000000000000000001 /* UITestHost */;
+			targetProxy = A17000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A16000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		A16000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Release;
+		};
+		A16000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TestHost/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.air-devs.air.uitesthost";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = iphonesimulator;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A16000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TestHost/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.air-devs.air.uitesthost";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = iphonesimulator;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A16000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/../Natives/UI/Shell",
+					"$(PROJECT_DIR)/../Natives/UI/Common",
+					"$(PROJECT_DIR)/../Natives",
+					"$(PROJECT_DIR)/../Natives/customcontrols",
+					"$(PROJECT_DIR)/../Natives/UI/Game",
+					"$(PROJECT_DIR)/../Natives/UI/Download",
+				);
+				INFOPLIST_FILE = AmethystXCTests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					AVFoundation,
+					"-framework",
+					AVKit,
+					"-framework",
+					Photos,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.air-devs.air.xctests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = iphonesimulator;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/UITestHost.app/UITestHost";
+				WRAPPER_EXTENSION = xctest;
+			};
+			name = Debug;
+		};
+		A16000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/../Natives/UI/Shell",
+					"$(PROJECT_DIR)/../Natives/UI/Common",
+					"$(PROJECT_DIR)/../Natives",
+					"$(PROJECT_DIR)/../Natives/customcontrols",
+					"$(PROJECT_DIR)/../Natives/UI/Game",
+					"$(PROJECT_DIR)/../Natives/UI/Download",
+				);
+				INFOPLIST_FILE = AmethystXCTests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					AVFoundation,
+					"-framework",
+					AVKit,
+					"-framework",
+					Photos,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.air-devs.air.xctests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = iphonesimulator;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/UITestHost.app/UITestHost";
+				WRAPPER_EXTENSION = xctest;
+			};
+			name = Release;
+		};
+		A16000000000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AmethystXCUITests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.air-devs.air.xcuitests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = iphonesimulator;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				WRAPPER_EXTENSION = xctest;
+			};
+			name = Debug;
+		};
+		A16000000000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AmethystXCUITests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.air-devs.air.xcuitests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = iphonesimulator;
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				WRAPPER_EXTENSION = xctest;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A15000000000000000000001 /* Build configuration list for PBXProject "AmethystUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A16000000000000000000001 /* Debug */,
+				A16000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A15000000000000000000002 /* Build configuration list for PBXNativeTarget "UITestHost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A16000000000000000000003 /* Debug */,
+				A16000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A15000000000000000000003 /* Build configuration list for PBXNativeTarget "AmethystXCTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A16000000000000000000005 /* Debug */,
+				A16000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A15000000000000000000004 /* Build configuration list for PBXNativeTarget "AmethystXCUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A16000000000000000000007 /* Debug */,
+				A16000000000000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000000000000000000001 /* Project object */;
+}

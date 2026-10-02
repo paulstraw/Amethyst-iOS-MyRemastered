@@ -1,0 +1,1104 @@
+name: UI layered tests
+
+# UI 分层测试合集（单文件多作业）：Tier0 grep 层 + Tier1 结构层 + Tier Apple 真编译
+# + Tier Compile/Full（真 SDK 语法编译）+ XCTest 运行时层（模拟器）。
+# 由 ui-tier0/tier1/tier-apple 三个单作业工作流合并而来，减少文件数、一次推送一次全量信号。
+# 模拟器构建移植探针（P-sim，多作业并入本文件）：UITEST 裁剪路线——
+# 主程序纯 dlopen 渲染库，sim 包跳过 MobileGlues/SFPEW/shim 全家 + 设备版 jre，
+# 直组 native+java+assets。成功标准：Payload 出 sim 包 → ad-hoc 重签 →
+# simctl 安装 → 启动出 PID。
+# XCTest 运行时层（Apple 官方框架，macos-14 + Xcode 15.4 + iOS 模拟器）：
+# - xctest-shell（阻塞）：灰盒 bundle，运行时断言 Phase0 护栏
+#   （LauncherRouter.h / UITheme.h，header-only，零链接依赖），必须绿。
+# - xcuitest-app（阻塞）：黑盒 XCUITest 直连真 App 包体
+#   （bundle id com.air-devs.air，sim-probe-payload 产出并上传 sim-app，
+#   本作业下载安装后真跑）。用例失败即红；每关键帧存真 PNG 到 mac /tmp，
+#   收集为 uitests-app-previews artifact（App UI 预览图）。
+on:
+  pull_request:
+    branches-ignore:
+      - 'l10n_main'
+    types: [opened, reopened, synchronize]
+  push:
+    branches-ignore:
+      - 'l10n_main'
+  workflow_dispatch:
+
+jobs:
+  tier0:
+    name: UI Tier0 static checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (no submodules needed)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Router coverage (every @"Show*"/notify literal has a constant)
+        run: |
+          set -e
+          # 头文件随 P10 布局重构搬家，用 locate 而非硬编码（下同）
+          ROUTER_H=$(find Natives -name LauncherRouter.h | head -n 1)
+          # 抽取通知字面量，与 LauncherRouter.h 常量值交叉核对
+          grep -rho 'postNotificationName:@"[^"]*"\|name:@"[^"]*"' Natives --include='*.m' \
+            | grep -o '@"[^"]*"' | tr -d '@"' | sort -u > /tmp/used.txt
+          grep -o '"Show[A-Za-z]*"\|"Background[A-Za-z]*"\|"LauncherAppearance[A-Za-z]*"\|"ReloadProfileList"\|"SelectedProfileChanged"\|"UpdateAccountInfo"\|"AccountChanged"\|"InstallModpack"\|"FindVersionInRemoteList"\|"DownloadCenterDidDismiss"\|"UIThemeChanged"\|"OpenCurseForgeAPIKeySettings"' "$ROUTER_H" \
+            | tr -d '"' | sort -u > /tmp/covered.txt
+          missing=0
+          while read -r n; do
+            # 仅校验导航/外观/数据三类（系统 UIKit 通知如 UINavigationController... 除外）
+            case "$n" in
+              Show*|Background*|LauncherAppearance*|ReloadProfileList|SelectedProfileChanged|UpdateAccountInfo|AccountChanged|InstallModpack|FindVersionInRemoteList|DownloadCenterDidDismiss|UIThemeChanged|OpenCurseForgeAPIKeySettings)
+                grep -qx "$n" /tmp/covered.txt || { echo "[tier0] Router missing: $n"; missing=1; } ;;
+            esac
+          done < /tmp/used.txt
+          exit $missing
+
+      - name: No secrets in tree (long ghp_ tokens)
+        run: |
+          set -e
+          # 真 token 40 字符；短命中（如 highp_ 误报）用 30+ 长度过滤
+          if grep -rE 'ghp_[A-Za-z0-9]{30,}' Natives JavaApp .github Makefile 2>/dev/null; then
+            echo '[tier0] possible token leak'; exit 1
+          fi
+          echo '[tier0] no token leak'
+
+      - name: DownloadVC size budget (P6a ratchet, only shrinks)
+        run: |
+          set -e
+          # P6a 拆分成果锁定：主文件只许缩小不许膨胀（2026-09-28 基线 352 行，预算 400）。
+          LINES=$(wc -l < Natives/UI/Download/DownloadViewController.m)
+          echo "[tier0] DownloadViewController.m lines: $LINES"
+          [ "$LINES" -le 400 ] || { echo '[tier0] DownloadVC budget exceeded'; exit 1; }
+
+      - name: Header-only guard (no new .m without CMake entry)
+        run: |
+          set -e
+          # Phase0 约定：只允许新增 header；新增 .m 必须同步登记 CMakeLists
+          git fetch origin main --depth 1 --filter=blob:none 2>/dev/null || true
+          base="origin/main"
+          git rev-parse --verify "$base" >/dev/null 2>&1 || base="${{ github.event.before }}"
+          for f in $(git diff --name-only "$base" HEAD -- Natives | grep '\.m$' || true); do
+            grep -q "$(basename $f)" Natives/CMakeLists.txt || { echo "[tier0] new .m not in CMakeLists: $f"; exit 1; }
+          done
+          echo '[tier0] header-only guard passed'
+
+      - name: Patch scripts syntax
+        run: |
+          set -e
+          python3 -m py_compile Natives/patch_sfpew_ios.py Natives/patch_mobilegl_ios.py 2>/dev/null || echo '[tier0] patch scripts optional check skipped'
+
+      - name: Shell senders use Router (no direct Show* posts in shell)
+        run: |
+          set -e
+          # Phase1/2 约定：外壳 5 文件只许 RouterPost；直接字面量即回退
+          hits=$(grep -rn 'postNotificationName:@"Show' \
+            Natives/LauncherMenuViewController.m \
+            Natives/LauncherRightPanelViewController.m \
+            Natives/LauncherNewsViewController.m \
+            Natives/LauncherCardLayoutViewController.m \
+            Natives/LauncherNavigationController.m 2>/dev/null || true)
+          if [ -n "$hits" ]; then echo "$hits"; echo '[tier0] shell must use RouterPost'; exit 1; fi
+          echo '[tier0] shell Router gate passed'
+
+      - name: No direct posts of covered names anywhere (Router centralization complete)
+        run: |
+          set -e
+          # 最终态：31 个收敛通知名全仓只许 RouterPost；新增直发即失败
+          hits=$(grep -rn 'postNotificationName:@"\(Show[A-Za-z]*\|Background[A-Za-z]*\|LauncherAppearance[A-Za-z]*\|ReloadProfileList\|SelectedProfileChanged\|UpdateAccountInfo\|AccountChanged\|InstallModpack\|FindVersionInRemoteList\|DownloadCenterDidDismiss\|UIThemeChanged\|OpenCurseForgeAPIKeySettings\|PojavFirstFrameRendered\|PLLogOutputLineNotification\|MousePointerUpdated\|AiSessionMessagesDidChangeNotification\|UINavigationControllerDidShowViewControllerNotification\)"' \
+            Natives --include='*.m' 2>/dev/null || true)
+          if [ -n "$hits" ]; then echo "$hits"; echo '[tier0] use RouterPost instead'; exit 1; fi
+          echo '[tier0] global Router gate passed'
+
+      - name: New headers acyclic (Router/UITheme not in import cycles)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import re, glob, sys
+          graph = {}
+          for h in glob.glob('Natives/*.h') + glob.glob('Natives/UI/**/*.h', recursive=True):
+              txt = open(h, encoding='utf-8', errors='ignore').read()
+              graph[h] = set(re.findall(r'#import\s+"([^"]+)"', txt))
+          # 规范化：只保留仍指向 Natives/*.h 的边
+          names = {p.split('/')[-1]: p for p in graph}
+          adj = {p: {names[b] for b in imps if b in names} for p, imps in graph.items()}
+          guarded = [g for g in glob.glob('Natives/**/LauncherRouter.h', recursive=True)
+                       + glob.glob('Natives/**/UITheme.h', recursive=True)]
+          # DFH 找环
+          WHITE, GRAY, BLACK = 0, 1, 2
+          color = dict.fromkeys(adj, WHITE)
+          stack = []
+          cycles = []
+          def dfs(u):
+              color[u] = GRAY; stack.append(u)
+              for v in adj.get(u, ()):
+                  if color[v] == GRAY:
+                      cycles.append(stack[stack.index(v):] + [v])
+                  elif color[v] == WHITE:
+                      dfs(v)
+              stack.pop(); color[u] = BLACK
+          for u in adj:
+              if color[u] == WHITE:
+                  dfs(u)
+          bad = [c for c in cycles if any(g in c for g in guarded)]
+          if bad:
+              print('[tier0] import cycle involving guarded headers:', bad); sys.exit(1)
+          print(f'[tier0] acyclic guard passed ({len(cycles)} pre-existing cycles elsewhere, untouched)')
+          PYEOF
+
+      - name: i18n keys exist (typo'd key shows raw key to users)
+        run: |
+          set -e
+          # localize() 兜底链：en.strings → UIKit 系统包 → 原样返回 key。
+          # 打错 key 即用户可见裸 key。本门禁锁 1376 现有用键，新增缺失即红。
+          python3 - <<'PYEOF'
+          import re, glob, sys
+          code = set()
+          for f in glob.glob('Natives/**/*.m', recursive=True):
+              txt = open(f, encoding='utf-8', errors='ignore').read()
+              code |= set(re.findall(r'localize\(@"([^"]+)"', txt))
+              code |= set(re.findall(r'NSLocalizedString\(@"([^"]+)"', txt))
+          strs = open('Natives/resources/en.lproj/Localizable.strings', encoding='utf-8', errors='ignore').read()
+          have = set(re.findall(r'^"([^"]+)"\s*=', strs, re.M))
+          # UIKit 系统包自带翻译（utils.m 兜底链第二跳），非缺失
+          SYSTEM = {'Cancel', 'Delete', 'Done', 'Edit profile', 'Error', 'None',
+                    'OK', 'Release', 'Rename', 'Share', 'Sign in', 'Warning'}
+          # 存量缺口（冻结备忘）：英文下显示裸 key，修=改用户可见文案，需产品确认
+          KNOWN_GAPS = {'login.cancelled', 'login.title'}
+          missing = sorted(code - have - SYSTEM - KNOWN_GAPS)
+          if missing:
+              print('[tier0] i18n keys missing in en.strings:', missing); sys.exit(1)
+          print(f'[tier0] i18n keys covered ({len(code)} used, {len(KNOWN_GAPS)} known-gaps frozen)')
+          PYEOF
+
+      - name: UI testability contract (XCUITest identifiers present, only grows)
+        run: |
+          set -e
+          # P8 无障碍/可测性回归网：XCUITest 按 identifier 定位元素，删 identifier
+          # 即黑盒用例失明。本门禁锁契约只增不减（2026-09-29 基线：root 1 + menu 5 + nav 40）。
+          python3 - <<'PYEOF'
+          import re, glob, sys
+          ids = set()
+          fmts = set()
+          pfmts = set()
+          for f in glob.glob('Natives/**/*.m', recursive=True):
+              txt = open(f, encoding='utf-8', errors='ignore').read()
+              ids |= set(re.findall(r'accessibilityIdentifier\s*=\s*@"([^"]+)"', txt))
+              fmts |= set(re.findall(r'@"([^"]*launcher-menu-[^"]*)"', txt))
+              pfmts |= set(re.findall(r'@"([^"]*pref-cell-[^"]*)"', txt))
+          assert 'launcher-root' in ids, '[tier0] missing testability id: launcher-root'
+          assert any('launcher-menu-' in f for f in fmts), '[tier0] missing menu id format'
+          # P7 深流入口：设置行级 id（pref-cell-<key> 格式）+ 编辑器引导文案（字面量）
+          assert any('pref-cell-' in f for f in pfmts), '[tier0] missing pref-cell id format'
+          assert 'customcontrols-guide' in ids, '[tier0] missing testability id: customcontrols-guide'
+          # 搜索流：filteredItems 同样 key 标识（pref-search-<key>），滚翻找的替代正道
+          psearch = set()
+          for f in glob.glob('Natives/**/*.m', recursive=True):
+              txt = open(f, encoding='utf-8', errors='ignore').read()
+              psearch |= set(re.findall(r'@"([^"]*pref-search-[^"]*)"', txt))
+          assert any('pref-search-' in f for f in psearch), '[tier0] missing pref-search id format'
+          nav = sorted(i for i in ids if i.startswith('nav-'))
+          assert len(nav) >= 40, f'[tier0] nav ids shrank: {len(nav)}'
+          assert len(nav) == len(set(nav)), '[tier0] duplicate nav ids'
+          print(f'[tier0] testability contract OK ({len(nav)} nav + root + 5 menu)')
+          # P8b：内容按钮 btn- 系同样只增不减（2026-09-30 基线 51 静态；
+          # 工厂 title 动态 id 另计 6 处：ModsManager chip/batch、DownloadTasks
+          # typeFilter、PLCrash、Download sidebarSelect、menu format）。
+          # 故意未覆盖（设计使然）：版本页 chip（identifier 存 sort key）、
+          # PLTaskProgress 工厂本体（4 调用处各设静态 id）。
+          btn = sorted(i for i in ids if i.startswith('btn-'))
+          assert len(btn) >= 51, f'[tier0] btn ids shrank: {len(btn)}'
+          assert len(btn) == len(set(btn)), '[tier0] duplicate btn ids'
+          print(f'[tier0] btn contract OK ({len(btn)} static)')
+          PYEOF
+
+      - name: No deprecated windows/rect APIs (P7 safe subset, only ScreenUtils fallback)
+        run: |
+          set -e
+          # P7 安全子集收敛：窗口一律走 ScreenUtils scene 封装（keyWindow/ame_allWindows），
+          # 矩形 inset 走 AMEEdgeInsetsInsetRect。唯一例外是 ScreenUtils.m 内的兼容 fallback。
+          python3 - <<'PYEOF'
+          import re, glob, sys
+          pat = re.compile(r'sharedApplication\]?\s*\.\s*windows|\[UIApplication\s+sharedApplication\]\s*windows')
+          bad = []
+          for f in glob.glob('Natives/**/*.m', recursive=True) + glob.glob('Natives/**/*.h', recursive=True):
+              if f.endswith('ScreenUtils.m'):
+                  continue
+              for i, l in enumerate(open(f, encoding='utf-8', errors='ignore').read().splitlines(), 1):
+                  if l.strip().startswith('//'):
+                      continue
+                  if 'UIEdgeInsetsInsetRect(' in l and 'AMEEdgeInsetsInsetRect' not in l:
+                      bad.append(f'{f}:{i}')
+                  if pat.search(l):
+                      bad.append(f'{f}:{i}')
+          if bad:
+              print('[tier0] deprecated API residue:', bad); sys.exit(1)
+          print('[tier0] deprecated windows/rect APIs at zero')
+          PYEOF
+
+      - name: P7 Frame migration ratchet (CGRectMake only shrinks)
+        run: |
+          set -e
+          # P7（Frame→约束）验证先行：全仓手算 CGRectMake 只许减少不许增加。
+          # 基线（实测，共 124 处；CCMenu 表单行已迁同值约束，P9-2 已删文件不在内）：
+          # CustomControlsVC 30（含已迁铬件/blurView）、ProfileSettings 14……
+          # 每消一处都应是约束等价替换；新增即方向错误。布局正确性仍需像素验证
+          # （真机/sim，见 P7 计划），本门禁只锁数量；文件改名/删除即响亮失败，
+          # 避免基线静默失效（改布局时同步更新本表）。
+          python3 - <<'PYEOF'
+          import re, os, sys
+          BASE = {
+              'Natives/UI/Account/AccountListViewController.m': 1,
+              'Natives/UI/Common/GameMenuOverlayView.m': 2,
+              'Natives/UI/Common/ImageCropperViewController.m': 5,
+              'Natives/UI/Common/MarqueeLabel.m': 2,
+              'Natives/UI/Common/MinecraftNewsViewController.m': 1,
+              'Natives/UI/Common/PLCrashView.m': 3,
+              'Natives/UI/Common/PLLogOutputView.m': 1,
+              'Natives/UI/Common/PLPickerView.m': 1,
+              'Natives/UI/Common/PickTextField.m': 3,
+              'Natives/UI/Download/DownloadHistoryViewController.m': 2,
+              'Natives/UI/Download/DownloadTasksViewController.m': 2,
+              'Natives/UI/Game/CustomControlsViewController+UndoManager.m': 1,
+              'Natives/UI/Game/CustomControlsViewController.m': 13,
+              'Natives/UI/Game/JavaGUIViewController.m': 3,
+              'Natives/UI/Game/SurfaceViewController+Navigation.m': 8,
+              'Natives/UI/Game/SurfaceViewController.m': 7,
+              'Natives/UI/Resources/AssetDetailHeaderView.m': 2,
+              'Natives/UI/Resources/AssetVersionViewController.m': 1,
+              'Natives/UI/Resources/DataPacksManagerViewController.m': 1,
+              'Natives/UI/Resources/ModTableViewController.m': 4,
+              'Natives/UI/Resources/ModpackExportViewController.m': 2,
+              'Natives/UI/Resources/ModpackImportViewController.m': 5,
+              'Natives/UI/Resources/ProfileSettingsViewController.m': 14,
+              'Natives/UI/Resources/VersionManagerViewController.m': 3,
+              'Natives/UI/Settings/BackgroundSettingsViewController.m': 6,
+              'Natives/UI/Settings/LauncherPrefContCfgViewController.m': 2,
+              'Natives/UI/Settings/LauncherPrefGameDirViewController.m': 1,
+              'Natives/UI/Settings/LauncherPreferencesViewController.m': 2,
+              'Natives/UI/Settings/LauncherProfileEditorViewController.m': 1,
+              'Natives/UI/Settings/PLPrefTableViewController.m': 2,
+              'Natives/UI/Settings/TouchControllerPreferencesViewController.m': 2,
+              'Natives/UI/Shell/LauncherNavigationController.m': 9,
+              'Natives/UI/Shell/LauncherNewsViewController.m': 2,
+              'Natives/UIKit+hook.m': 2,
+              'Natives/customcontrols/ControlButton.m': 1,
+              'Natives/customcontrols/ControlJoystick.m': 5,
+              'Natives/sdl3_hook.m': 1,
+              'Natives/utils.m': 1,
+          }
+          total = 0
+          for f, base in BASE.items():
+              assert os.path.isfile(f), f'[tier0] P7 baseline file gone: {f}'
+              n = len(re.findall(r'CGRectMake\s*\(', open(f, encoding='utf-8', errors='ignore').read()))
+              assert n <= base, f'[tier0] CGRectMake grew in {f}: {n} > {base}'
+              total += n
+          print(f'[tier0] P7 Frame ratchet OK ({total}/124 remaining)')
+          PYEOF
+
+      - name: P8 font mapping pin (Dynamic Type safe subset)
+        run: |
+          set -e
+          # P8 字体推广安全子集：仅精确等值替换（默认字号下逐值一致）。
+          # 映射表：17/Body 16/Callout 15/Subheadline 13/Footnote 12/Caption1 11/Caption2。
+          # 带 weight/非常规字号一律不动（无精确等价）。本门禁锁死两件事：
+          # ① 六个精确原形不得重现（重现即回退）；② 激活行存在（SceneDelegate appearance）。
+          python3 - <<'PYEOF'
+          import re, glob, sys
+          MAP = {'17': 'UIFontTextStyleBody', '16': 'UIFontTextStyleCallout',
+                 '15': 'UIFontTextStyleSubheadline', '13': 'UIFontTextStyleFootnote',
+                 '12': 'UIFontTextStyleCaption1', '11': 'UIFontTextStyleCaption2'}
+          n_plain = 0
+          for f in glob.glob('Natives/UI/**/*.m', recursive=True):
+              txt = open(f, encoding='utf-8', errors='ignore').read()
+              n_plain += len(re.findall(r'\[UIFont systemFontOfSize:(17|16|15|13|12|11)\]', txt))
+          assert n_plain == 0, f'[tier0] plain systemFontOfSize remnant: {n_plain}'
+          for size, style in MAP.items():
+              hits = sum(open(f, encoding='utf-8', errors='ignore').read().count(
+                  f'preferredFontForTextStyle:{style}') for f in glob.glob('Natives/UI/**/*.m', recursive=True))
+              assert hits > 0, f'[tier0] font mapping unused: {size}->{style}'
+          sd = open('Natives/SceneDelegate.m', encoding='utf-8', errors='ignore').read()
+          assert 'setAdjustsFontForContentSizeCategory:YES' in sd, '[tier0] Dynamic Type activation missing'
+          print('[tier0] P8 font mapping pinned (6 styles live, 0 plain remnants, activation present)')
+          PYEOF
+
+      - name: P8 alpha contract (four shells delegate to UITheme)
+        run: |
+          set -e
+          # P8 alpha 裁决 RRGGBBAA：Root/Menu/Card/RightPanel 四个 colorFromHexString
+          # 方法壳全部转调 UIThemeColorFromHexWithAlpha，6 位逐值一致、8 位统一。
+          python3 - <<'PYEOF'
+          import sys
+          files = ['Natives/UI/Shell/LauncherRootViewController.m',
+                   'Natives/UI/Shell/LauncherMenuViewController.m',
+                   'Natives/UI/Shell/LauncherCardLayoutViewController.m',
+                   'Natives/UI/Shell/LauncherRightPanelViewController.m']
+          for f in files:
+              txt = open(f, encoding='utf-8', errors='ignore').read()
+              assert 'UIThemeColorFromHexWithAlpha' in txt, f'[tier0] alpha shell broken: {f}'
+              assert 'scanHexInt' not in txt, f'[tier0] residual hex parser in: {f}'
+          print('[tier0] P8 alpha contract OK (4 shells delegate)')
+          PYEOF
+
+  tier1:
+    name: UI Tier1 structural checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (no submodules needed)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Imports resolve like clang (target files, dirname + CMake -I, no guessing)
+        run: |
+          set -e
+          # 教训：P10b-e 漏网 `../SurfaceViewController.h`（Tier2 实证），
+          # 因旧门禁“递归按名兜底”与 clang 行为不一致。本门禁逐字镜像编译器：
+          # 仅检查 app target 内文件；含 / 的引用只按“同目录 + CMake -I 逐项拼接”解析。
+          python3 - <<'PYEOF'
+          import re, glob, os, sys
+          txt = open('Natives/CMakeLists.txt', encoding='utf-8', errors='ignore').read()
+          start = txt.find('add_executable(AngelAuraAmethyst')
+          block = txt[start:txt.find('target_link_libraries(AngelAuraAmethyst')]
+          target = set()
+          for line in block.splitlines():
+              s = line.strip()
+              if not s or s.startswith('#'):
+                  continue
+              m = re.fullmatch(r'([\w/+.-]+\.m)', s)
+              if m:
+                  p = os.path.join('Natives', m.group(1))
+                  if os.path.isfile(p):
+                      target.add(p)
+          ib = txt.find('include_directories(')
+          ie = txt.find(')', ib)
+          incs = ['Natives'] + ['Natives/' + l.strip().strip('"') for l in txt[ib:ie].splitlines()[1:]
+                  if l.strip() and not l.strip().startswith('#') and not l.strip().startswith(')')]
+          # submodule/生成头（源码树本就没有，由构建环境提供；Tier0/compile 侧覆盖其存在性）
+          ALLOW = {'AFNetworking.h', 'ALTServerConnection.h', 'DBNumberedSlider.h', 'HostManagerBridge.h',
+                   'fishhook.h',
+                   'NSFileManager+NRFileManager.h', 'UIImageView+AFNetworking.h', 'UIKit+AFNetworking.h',
+                   'UZKArchive.h', 'UnzipKit.h', 'config.h', 'mach_excServer.h'}
+          # submodule 生成前本地缺失的目录在 CI 由 submodule 步骤补齐；只校验 Natives 内已存在目录
+          bad = {}
+          for f in sorted(target):
+              for i, l in enumerate(open(f, encoding='utf-8', errors='ignore').read().splitlines()):
+                  if l.strip().startswith('//'):
+                      continue
+                  for imp in re.findall(r'#(?:import|include)\s+"([^"]+)"', l):
+                      if imp.split('/')[-1] in ALLOW:
+                          continue
+                      cands = [os.path.normpath(os.path.join(os.path.dirname(f), imp))]
+                      cands += [os.path.normpath(os.path.join(d, imp)) for d in incs]
+                      if not any(os.path.isfile(c) for c in cands):
+                          bad.setdefault(f + ':' + str(i + 1), []).append(imp)
+          if bad:
+              print('[tier1] unresolvable imports (clang-mirror):', bad); sys.exit(1)
+          print(f'[tier1] imports resolve like clang ({len(target)} target files)')
+          PYEOF
+
+      - name: RouterPost constants valid (used ⊆ defined)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import re, glob, sys
+          def loc(n):
+              hits = glob.glob(f'Natives/**/{n}', recursive=True)
+              if not hits:
+                  print(f'[tier1] moved file not found: {n}'); sys.exit(1)
+              return hits[0]
+          defs = set(re.findall(r'static NSString \* const (kRouter\w+)',
+                                open(loc('LauncherRouter.h'), encoding='utf-8').read()))
+          used = set()
+          for f in glob.glob('Natives/**/*.m', recursive=True):
+              txt = open(f, encoding='utf-8', errors='ignore').read()
+              used |= set(re.findall(r'RouterPost\((kRouter\w+)', txt))
+              used |= set(re.findall(r'(?:addObserver|removeObserver)[^;]*?name:(kRouter\w+)', txt))
+              used |= set(re.findall(r'addObserverForName:(kRouter\w+)', txt))
+          undefined = used - defs
+          if undefined:
+              print('[tier1] undefined Router constants:', undefined); sys.exit(1)
+          print(f'[tier1] Router constants valid ({len(used)} used, {len(defs)} defined)')
+          PYEOF
+
+      - name: No duplicated hex bodies (Card/Prefs delegate to UITheme)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import re, glob, sys
+          def loc(n):
+              hits = glob.glob(f'Natives/**/{n}', recursive=True)
+              if not hits:
+                  print(f'[tier1] moved file not found: {n}'); sys.exit(1)
+              return hits[0]
+          bad = []
+          for f in [loc('LauncherCardLayoutViewController.m'),
+                    loc('LauncherPreferencesViewController.m')]:
+              t = open(f, encoding='utf-8').read()
+              m = re.search(r'-\s*\(.*?\)colorFromHexString[^{]*\{([^}]*)\}', t)
+              body = m.group(1) if m else ''
+              if 'UIThemeColorFromHex' not in body or 'scanHexInt' in body:
+                  bad.append(f)
+          if bad:
+              print('[tier1] duplicated hex bodies:', bad); sys.exit(1)
+          print('[tier1] hex bodies converge')
+          PYEOF
+
+      - name: CMake full-tree invariant (top-level .m listed, 2 documented exceptions)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import glob, os, sys
+          cmake = open('Natives/CMakeLists.txt', encoding='utf-8').read()
+          exc = {'SSZipArchive.m', 'shaderc_sandbox.m'}  # 独立 target / 构建期条件编译
+          missing = [os.path.basename(f) for f in glob.glob('Natives/*.m')
+                     if os.path.basename(f) not in exc and os.path.basename(f) not in cmake]
+          if missing:
+              print('[tier1] .m not in CMakeLists:', missing); sys.exit(1)
+          print('[tier1] CMake invariant holds')
+          PYEOF
+
+      - name: ObjC block balance on touched scope (vendored/external excluded)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import re, glob, sys
+          # 历史存量失衡（第三方头/个别老文件），仅冻结不再新增：
+          # 门禁 = 除例外表外 @interface/@implementation/@protocol 与 @end 配平。
+          # P9 已删除顶层 CurseForgeAPIKeyViewController.m（构建外死文件），
+          # 例外表同步收紧；再删死文件时继续同步收紧。
+          EXC = {'Natives/installer/CurseForgeAPIKeyViewController.m',
+                 'Natives/SurfaceViewController.m', 'Natives/PLDownloadClient.m',
+                 'Natives/SSZipArchive.h'}
+          bad = []
+          for f in glob.glob('Natives/*.m') + glob.glob('Natives/*.h') \
+                   + glob.glob('Natives/AI/*.m') + glob.glob('Natives/AI/*.h') \
+                   + glob.glob('Natives/installer/*.m') + glob.glob('Natives/installer/modpack/*.m'):
+              if f in EXC:
+                  continue
+              t = open(f, encoding='utf-8', errors='ignore').read()
+              opens = len(re.findall(r'@(interface|implementation|protocol)\b', t))
+              ends = len(re.findall(r'@end\b', t))
+              if opens != ends:
+                  bad.append((f, opens, ends))
+          if bad:
+              print('[tier1] unbalanced ObjC blocks:', bad); sys.exit(1)
+          print('[tier1] ObjC blocks balanced')
+          PYEOF
+
+      - name: Pub/sub pairing (every posted value observed, observers known)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import re, glob, sys
+          def loc(n):
+              hits = glob.glob(f'Natives/**/{n}', recursive=True)
+              if not hits:
+                  print(f'[tier1-deep] moved file not found: {n}'); sys.exit(1)
+              return hits[0]
+          vals = dict(re.findall(r'static NSString \* const (kRouter\w+)\s*=\s*@"([^"]+)"',
+                                 open(loc('LauncherRouter.h'), encoding='utf-8').read()))
+          # 观察者：selector 式 + block 式，字面量与常量两态
+          obs = set()
+          obsv = set()
+          for f in glob.glob('Natives/**/*.m', recursive=True):
+              txt = open(f, encoding='utf-8', errors='ignore').read()
+              obs |= set(re.findall(r'addObserver:[^;]*?name:@"([^"]+)"', txt))
+              obs |= set(re.findall(r'removeObserver:[^;]*?name:@"([^"]+)"', txt))
+              obs |= set(re.findall(r'addObserverForName:@"([^"]+)"', txt))
+              for k in re.findall(r'addObserver:[^;]*?name:(kRouter\w+)', txt): obsv.add(vals[k])
+              for k in re.findall(r'removeObserver:[^;]*?name:(kRouter\w+)', txt): obsv.add(vals[k])
+              for k in re.findall(r'addObserverForName:(kRouter\w+)', txt): obsv.add(vals[k])
+          obs |= obsv
+          unknown = obs - set(vals.values())
+          if unknown:
+              print('[tier1-deep] observer names outside Router:', sorted(unknown)); sys.exit(1)
+          pub = set()
+          for f in glob.glob('Natives/**/*.m', recursive=True):
+              pub |= set(re.findall(r'RouterPost\((kRouter\w+)',
+                                    open(f, encoding='utf-8', errors='ignore').read()))
+          pubvals = {vals[k] for k in pub if k in vals}
+          # 存量死端（冻结备忘，非本次引入）：
+          # - LauncherAppearanceApplied：Root 投稿，树内零订阅
+          # - PLLogOutputLineNotification：投稿在 PLLogOutputView.m/main.m（保留，
+          #   删 posting=行为变更）；唯一订阅者曾在 LanPortDetector.m，
+          #   该文件 P9-2 已删（本就不在 target 内），现树内零订阅
+          DEAD = {'LauncherAppearanceApplied', 'PLLogOutputLineNotification'}
+          orphan = [v for v in sorted(pubvals) if v not in obs and v not in DEAD]
+          if orphan:
+              print('[tier1-deep] posted but never observed:', orphan); sys.exit(1)
+          print(f'[tier1-deep] pub/sub paired ({len(pubvals)} posted, {len(obs)} observed, {len(DEAD)} known-dead)')
+          PYEOF
+
+      - name: Workflow self-lint (no secrets/vars in if:, repo lesson)
+        run: |
+          set -e
+          # development.yml 头部注释的教训：if: 里求值 secrets/vars 会编译失败。
+          # 本门禁保证 UI 工作流自身不重蹈（upstream 的 development.yml:142 存量问题不管）。
+          hits=$(grep -n "if:.*secrets\.\|if:.*vars\." .github/workflows/ui.yml 2>/dev/null || true)
+          if [ -n "$hits" ]; then echo "$hits"; echo '[tier1-deep] secrets/vars in if:'; exit 1; fi
+          echo '[tier1-deep] workflows self-lint passed'
+
+      - name: ame_ selector pairing (every ame_ selector resolves to category def)
+        run: |
+          set -e
+          # P5a 回归网：@selector(ame_X) 编译器不校验，漏改名运行时才炸（unrecognized selector）。
+          # 本门禁要求全仓所有 ame_ 引用 ⊆ 分类定义集。
+          python3 - <<'PYEOF'
+          import re, glob, sys
+          def loc(n):
+              hits = glob.glob(f'Natives/**/{n}', recursive=True)
+              if not hits:
+                  print(f'[tier1-deep] moved file not found: {n}'); sys.exit(1)
+              return hits[0]
+          cat = open(loc('UIViewController+LauncherShellRouting.m'), encoding='utf-8').read()
+          defs = set(re.findall(r'- \(void\)(ame_\w+)', cat))
+          refs = set()
+          for f in glob.glob('Natives/**/*.m', recursive=True):
+              txt = open(f, encoding='utf-8', errors='ignore').read()
+              # 冒号形式（带参，如 ame_showProfileEditor:）一并捕获
+              refs |= set(re.findall(r'@selector\((ame_\w+):?\)', txt))
+              refs |= set(re.findall(r'\[self (ame_\w+)[\s\]]', txt))
+          dangling = refs - defs
+          if dangling:
+              print('[tier1-deep] dangling ame_ selectors:', sorted(dangling)); sys.exit(1)
+          print(f'[tier1-deep] ame_ paired ({len(defs)} defined, {len(refs)} referenced)')
+          PYEOF
+
+  tier-apple:
+    name: UI Tier Apple toolchain compile
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Select Xcode 15.4
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Checkout (no submodules needed, headers are SDK-only)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Syntax-only compile headers + API smoke TU
+        run: |
+          set -e -x
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          ROUTER_H=$(find Natives -name LauncherRouter.h | head -n 1)
+          THEME_H=$(find Natives -name UITheme.h | head -n 1)
+          [ -n "$ROUTER_H" ] && [ -n "$THEME_H" ] || { echo '[tier-apple] headers moved?'; exit 1; }
+          FLAGS=(-isysroot "$SDK" -miphoneos-version-min=14.0 -fobjc-arc -Wunguarded-availability -Werror=unguarded-availability)
+          clang -fsyntax-only -x objective-c-header "${FLAGS[@]}" "$ROUTER_H"
+          clang -fsyntax-only -x objective-c-header "${FLAGS[@]}" "$THEME_H"
+          cat > /tmp/ui_smoke.m <<'EOF'
+          #import "LauncherRouter.h"
+          #import "UITheme.h"
+          void ui_refactor_smoke(NSString *name, UIColor *c) {
+              RouterPost(kRouterShowHomePage, nil, nil);
+              RouterPost(kRouterFindVersionInRemoteList, nil, @{@"k": @"v"});
+              RouterPost(kRouterSelectedProfileChanged, name, nil);
+              UIColor *d = UIThemeColorFromHex(@"#8B5CF6");
+              NSString *h = UIThemeHexFromColor(c ? c : UIColor.clearColor);
+              (void)d; (void)h;
+          }
+          EOF
+          clang -fsyntax-only -x objective-c "${FLAGS[@]}" -INatives -INatives/UI/Shell /tmp/ui_smoke.m
+          echo '[tier-apple] headers + API smoke compile passed'
+
+  tier-compile:
+    name: UI Tier compile (branch files syntax check)
+    # 深度层：用真实 AppleClang 逐文件语法编译本分支改动的全部 Natives .m，
+    # 与上游 main_hook 坏点无关（它不在本分支 diff 内）；upsteam 修好后 Tier2 接管全量。
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Select Xcode 15.4
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Checkout (no submodules yet)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Checkout submodules (headers needed, LFS fixtures skipped)
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+        run: git submodule update --init --recursive
+
+      - name: Generate config.h (gitignored artifact, same as real build)
+        run: |
+          set -e
+          # Natives/CMakeLists.txt:12 configure_file(config.h.in -> config.h)；
+          # 值仅影响 #if 分支取值，语法门以 release 形态为准（与 CI 默认一致）。
+          sed -e 's/#cmakedefine \([^ ]*\) 1/#define \1 1/' \
+              -e 's/#cmakedefine \([^ ]*\) "@[^"]*"/#define \1 ""/' \
+              -e 's/@[A-Za-z_0-9]*@/0/g' \
+              Natives/config.h.in > Natives/config.h
+          grep -c "#define" Natives/config.h
+
+      - name: Syntax-only compile every branch-touched Natives .m
+        run: |
+          set -e
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          # -I 与真实构建同源（Natives/CMakeLists.txt include_directories），
+          # 外加 installer/modpack + installer + AI + UI/Shell：构建外死文件与新布局所需，
+          # 经核查三处均无 time.h/string.h 类通用名，不会劫持系统头
+          # （此前 find全目录法曾把 glsl_optimizer/c11/time.h 劫持进来导致 ctime 缺失）。
+          # 目录名可能含空格，用 bash 数组逐个 -I。
+          INCLUDES=()
+          for d in . UI/Shell UI/Settings UI/Resources UI/Download UI/Account UI/Game UI/Common external/AFNetworking/AFNetworking external/AFNetworking/UIKit+AFNetworking \
+                   external/DBNumberedSlider/Classes external/NRFileManager external/UnzipKit \
+                   external/fishhook external/lzma external/mesa external/AltKit external/Apple \
+                   external/ballpa1n external/ballpa1n/wrapped external/mach \
+                   installer installer/modpack AI; do
+            INCLUDES+=("-INatives/$d")
+          done
+          FLAGS=(-isysroot "$SDK" -miphoneos-version-min=14.0 -fobjc-arc -target arm64-apple-ios -Wunguarded-availability)
+          git fetch origin main --depth 1 --filter=blob:none 2>/dev/null || true
+          base="origin/main"
+          git rev-parse --verify "$base" >/dev/null 2>&1 || base="${{ github.event.before }}"
+          git rev-parse --verify "$base" >/dev/null 2>&1 || { echo "[tier-compile] no base ref"; exit 1; }
+          FAILED=0
+          COUNT=0
+          for f in $(git diff --name-only "$base" HEAD -- 'Natives/*.m' 'Natives/**/*.m' 2>/dev/null || true); do
+            [ -f "$f" ] || continue
+            # main_hook.m 上游已坏（task132 未声明），归 Tier2；本门禁只保我方改动可解析。
+            if [ "$f" = "Natives/main_hook.m" ]; then
+              echo "[tier-compile] skip (upstream-owned broken file): $f"; continue
+            fi
+            COUNT=$((COUNT+1))
+            if ! clang -fsyntax-only -x objective-c "${FLAGS[@]}" "${INCLUDES[@]}" "$f" 2>"/tmp/tc_$(echo $f | tr '/' '_').log"; then
+              echo "[tier-compile] FAILED: $f"
+              grep -m3 "error:" "/tmp/tc_$(echo $f | tr '/' '_').log" || true
+              FAILED=1
+            fi
+          done
+          echo "[tier-compile] checked $COUNT files"
+          [ "$COUNT" -gt 0 ] || { echo "[tier-compile] empty file list"; exit 1; }
+          exit $FAILED
+
+  tier-full-compile:
+    name: UI Tier full compile (all target files, high cost)
+    # 高成本高质量：把 add_executable 全部 ~187 个 .m 在真 SDK 下逐个语法编译
+    # （-fsyntax-only + xargs 并行，约数分钟 wall time）。
+    # 价值：任一头文件改动波及的非 diff 文件亦被覆盖（如 Router.h 改坏会炸 60+ 引用者）。
+    # 唯一排除 main_hook.m（上游 task132 坏点，Tier2 同错，哨兵盯着）。
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Select Xcode 15.4
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Checkout (no submodules yet)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Checkout submodules (headers needed, LFS fixtures skipped)
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+        run: git submodule update --init --recursive
+
+      - name: Generate config.h (gitignored artifact, same as real build)
+        run: |
+          set -e
+          sed -e 's/#cmakedefine \([^ ]*\) 1/#define \1 1/' \
+              -e 's/#cmakedefine \([^ ]*\) "@[^"]*"/#define \1 ""/' \
+              -e 's/@[A-Za-z_0-9]*@/0/g' \
+              Natives/config.h.in > Natives/config.h
+          grep -c "#define" Natives/config.h
+
+      - name: Syntax-only compile every app-target .m except upstream-broken
+        run: |
+          set -e
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          mkdir -p /tmp/tfc
+          {
+            echo "-isysroot"; printf '"%s"\n' "$SDK"
+            echo "-miphoneos-version-min=14.0"
+            echo "-fobjc-arc"
+            echo "-target"; echo "arm64-apple-ios"
+            echo "-Wunguarded-availability"
+            for d in . UI/Shell external/AFNetworking/AFNetworking external/AFNetworking/UIKit+AFNetworking \
+                     external/DBNumberedSlider/Classes external/NRFileManager external/UnzipKit \
+                     external/fishhook external/lzma external/mesa external/AltKit external/Apple \
+                     external/ballpa1n external/ballpa1n/wrapped external/mach \
+                     installer installer/modpack AI; do
+              printf -- '-I"Natives/%s"\n' "$d"
+            done
+          } > /tmp/tfc/flags.rsp
+          FILES=$(python3 - <<'PYEOF'
+          import re, os
+          txt = open('Natives/CMakeLists.txt', encoding='utf-8', errors='ignore').read()
+          start = txt.find('add_executable(AngelAuraAmethyst')
+          block = txt[start:txt.find('target_link_libraries(AngelAuraAmethyst')]
+          out = []
+          for line in block.splitlines():
+              s = line.strip()
+              if not s or s.startswith('#'):
+                  continue
+              m = re.fullmatch(r'([\w/+.-]+\.m)', s)
+              if m:
+                  p = os.path.join('Natives', m.group(1))
+                  if os.path.isfile(p) and p != 'Natives/main_hook.m':
+                      out.append(p)
+          print('\n'.join(sorted(out)))
+          PYEOF
+          )
+          COUNT=$(echo "$FILES" | grep -c .)
+          echo "[tier-full-compile] $COUNT files"
+          [ "$COUNT" -gt 100 ] || { echo "[tier-full-compile] suspiciously few files"; exit 1; }
+          cat > /tmp/tfc/one.sh <<'EOF'
+          #!/bin/bash
+          f="$1"; out="/tmp/tfc_logs/$(echo "$f" | tr '/' '_').log"
+          mkdir -p /tmp/tfc_logs
+          clang -fsyntax-only -x objective-c @/tmp/tfc/flags.rsp "$f" >"$out" 2>&1 || echo "FAILED: $f"
+          EOF
+          chmod +x /tmp/tfc/one.sh
+          JOBS=$(sysctl -n hw.ncpu)
+          FAILS=$(echo "$FILES" | xargs -P "$JOBS" /tmp/tfc/one.sh)
+          if [ -n "$FAILS" ]; then
+            echo "$FAILS"
+            echo "$FAILS" | head -n 3 | while read -r line; do
+              ff=$(echo "$line" | sed 's/FAILED: //')
+              echo "--- $ff"; grep -m3 "error:" "/tmp/tfc_logs/$(echo "$ff" | tr '/' '_').log" || true
+            done
+            echo "[tier-full-compile] FAILED files above"; exit 1
+          fi
+          echo "[tier-full-compile] all $COUNT files parsed"
+
+  xctest-shell:
+    name: XCTest shell-contracts (blocking)
+    runs-on: macos-14
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (no submodules needed)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Select Xcode 15.4
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version || true
+
+      - name: Resolve simulator
+        run: |
+          set -e
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)['devices']
+          best = ''
+          for rt, devs in d.items():
+              for x in devs:
+                  if not x.get('isAvailable', True):
+                      continue
+                  if 'iPhone 15' in x['name'] and ('17.' in rt or '18.' in rt):
+                      best = x['udid']
+          if not best:
+              for rt, devs in d.items():
+                  for x in devs:
+                      if x.get('isAvailable', True) and x['name'].startswith('iPhone'):
+                          best = x['udid']; break
+                  if best: break
+          print(best)
+          ")
+          test -n "$UDID"
+          xcrun simctl boot "$UDID" 2>/dev/null || true
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          echo "[ui-tests] simulator: $UDID"
+
+      - name: Build for testing (retry with generic destination)
+        run: |
+          set -o pipefail
+          DEST="platform=iOS Simulator,id=${SIM_UDID}"
+          xcodebuild build-for-testing \
+            -project UITests/AmethystUITests.xcodeproj \
+            -scheme AmethystUITests \
+            -configuration Debug \
+            -derivedDataPath "$PWD/TestDD" \
+            -destination "$DEST" \
+            CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath TestResults/build-for-testing.xcresult \
+          || { rm -rf TestResults/build-for-testing.xcresult; xcodebuild build-for-testing \
+            -project UITests/AmethystUITests.xcodeproj \
+            -scheme AmethystUITests \
+            -configuration Debug \
+            -derivedDataPath "$PWD/TestDD" \
+            -destination "platform=iOS Simulator,name=iPhone 15" \
+            CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath TestResults/build-for-testing.xcresult; }
+
+      - name: Run gray-box tests (blocking)
+        run: |
+          set -o pipefail
+          XCRUN=$(find TestDD -name '*.xctestrun' | head -n 1)
+          test -n "$XCRUN" || { echo '[ui-tests] no .xctestrun under TestDD'; exit 1; }
+          echo "[ui-tests] xctestrun: $XCRUN"
+          xcodebuild test-without-building \
+            -xctestrun "$XCRUN" \
+            -destination "platform=iOS Simulator,id=${SIM_UDID}" \
+            -only-testing:AmethystXCTests \
+            -resultBundlePath TestResults/gray-box.xcresult
+
+      - name: Collect recorded snapshots (record-then-review flow)
+        if: always()
+        run: |
+          # 快照缺基准即 record+fail（自研 harness，pointfree 语义）；
+          # 录制物在模拟器 tmp 里，捞出来上传，审图后合入
+          # UITests/AmethystXCTests/__Snapshots__/ 再跑即绿。
+          mkdir -p RecordedSnapshots
+          find ~/Library/Developer/CoreSimulator/Devices/${SIM_UDID} -name "AMEsnap-*" 2>/dev/null -exec cp {} RecordedSnapshots/ \; || true
+          ls RecordedSnapshots/ || true
+
+      - name: Upload recorded snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uitests-recorded-snapshots
+          path: RecordedSnapshots/
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uitests-gray-box.xcresult
+          path: TestResults/gray-box.xcresult
+          if-no-files-found: warn
+
+  xcuitest-app:
+    name: XCUITest real-app (blocking, runs against sim build)
+    runs-on: macos-14
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    needs: [sim-probe-payload]
+    steps:
+      - name: Checkout (no submodules needed)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Select Xcode 15.4
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version || true
+
+      - name: Resolve simulator
+        run: |
+          set -e
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)['devices']
+          best = ''
+          for rt, devs in d.items():
+              for x in devs:
+                  if x.get('isAvailable', True) and x['name'].startswith('iPhone'):
+                      best = x['udid']; break
+              if best: break
+          print(best)
+          ")
+          test -n "$UDID"
+          xcrun simctl boot "$UDID" 2>/dev/null || true
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: Network egress diagnostics (non-blocking)
+        run: |
+          # 下载内容走公网（Mojang piston-meta / Modrinth API）；若 runner 出境被挡，
+          # 内容型用例必然空列表——本步只诊断不定罪（|| true）。
+          for u in https://piston-meta.mojang.com/mc/game/version_manifest_v2.json https://api.modrinth.com/v2/tag/game_version; do
+            echo "== $u";
+            curl -s -o /dev/null -w "HTTP:%{http_code} TIME:%{time_total}s SIZE:%{size_download}\n" --max-time 25 "$u" || echo "CURL-FAIL $u";
+          done
+
+      - name: Build for testing (proves both .xctest compile)
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project UITests/AmethystUITests.xcodeproj \
+            -scheme AmethystUITests \
+            -configuration Debug \
+            -derivedDataPath "$PWD/TestDD" \
+            -destination "platform=iOS Simulator,id=${SIM_UDID}" \
+            CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath TestResults/build-for-testing.xcresult
+
+      - name: Download simulator app from probe
+        uses: actions/download-artifact@v4
+        with:
+          name: sim-app-zip
+          path: sim-dl/
+
+      - name: Install simulator app
+        run: |
+          set -e
+          unzip -q sim-dl/sim-app.zip -d sim-app/
+          APP=$(find sim-app -maxdepth 2 -name "*.app" | head -n 1)
+          test -n "$APP" || { echo '[ui-tests] sim .app not found after unzip:'; ls -R sim-app | head -n 30; exit 1; }
+          echo "[ui-tests] sim app at: $APP"
+          codesign --force --sign - "$APP"
+          xcrun simctl install "${SIM_UDID}" "$APP"
+          echo '[ui-tests] sim app installed'
+
+      - name: Run black-box tests (blocking)
+        id: xcuitest
+        run: |
+          set -o pipefail
+          XCRUN=$(find TestDD -name '*.xctestrun' | head -n 1)
+          test -n "$XCRUN" || { echo '[ui-tests] no .xctestrun under TestDD'; exit 1; }
+          echo "[ui-tests] xctestrun: $XCRUN"
+          xcodebuild test-without-building \
+            -xctestrun "$XCRUN" \
+            -destination "platform=iOS Simulator,id=${SIM_UDID}" \
+            -only-testing:AmethystXCUITests \
+            -resultBundlePath TestResults/black-box.xcresult
+
+      - name: Record scaffold status
+        if: always()
+        run: |
+          echo "## XCUITest real-app: ${{ steps.xcuitest.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '真 App 上模拟器已通（sim-probe-payload 安装+启动验证），本作业转阻塞。' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Collect App UI previews (viewable PNGs)
+        if: always()
+        run: |
+          # 黑盒用例在固定共享目录 /tmp/AMEshots 落真 PNG（NSTemporaryDirectory 是
+          # 进程私有容器，从外部捞不到），连同 harness 画廊一并收集为样式 artifact
+          mkdir -p AppPreviews
+          cp /tmp/AMEshots/AMEshot-*.png AppPreviews/ 2>/dev/null || true
+          find ~/Library/Developer/CoreSimulator/Devices/${SIM_UDID} -name "AMEpreview-*.png" 2>/dev/null -exec cp {} AppPreviews/ \; || true
+          ls AppPreviews/ || true
+
+      - name: Upload App UI previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uitests-app-previews
+          path: AppPreviews/
+          if-no-files-found: warn
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uitests-black-box.xcresult
+          path: TestResults/black-box.xcresult
+          if-no-files-found: warn
+
+  sim-probe-payload:
+    name: Sim port probe payload+install+launch
+    runs-on: macos-14
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - name: Select Xcode 15.4
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version || true
+
+      - name: Install GNU Make
+        run: |
+          brew update
+          brew install make
+
+      - name: Install Java 8 (Temurin) via Homebrew
+        run: |
+          brew install --cask temurin@8 || true
+
+      - name: Install ldid
+        run: |
+          brew install ldid || true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout repository submodules
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+        run: git submodule update --init --recursive
+
+      - name: Resolve simulator
+        run: |
+          set -e
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)['devices']
+          best = ''
+          for rt, devs in d.items():
+              for x in devs:
+                  if x.get('isAvailable', True) and x['name'].startswith('iPhone'):
+                      best = x['udid']; break
+              if best: break
+          print(best)
+          ")
+          test -n "$UDID"
+          xcrun simctl boot "$UDID" 2>/dev/null || true
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          echo "[sim-port] simulator: $UDID"
+
+      - name: Probe gmake payload PLATFORM=7 UITEST=1
+        run: |
+          set -o pipefail
+          export PATH=/opt/homebrew/bin:$PATH
+          export IPHONEOS_DEPLOYMENT_TARGET=14.0
+          gmake payload PLATFORM=7 UITEST=1 SLIMMED=1 2>&1 | tee sim-payload.log
+
+      - name: Ad-hoc sign, install, launch
+        run: |
+          set -e
+          # OUTPUTDIR=artifacts（见 Makefile），Payload 在 artifacts/ 下，不在仓库根
+          APP="artifacts/Payload/AngelAuraAmethyst.app"
+          test -d "$APP"
+          # 覆盖 Makefile 的 ldid 假签名：模拟器认 ad-hoc（codesign -s -）
+          codesign --force --sign - "$APP"
+          xcrun simctl install "${SIM_UDID}" "$APP"
+          PID=$(xcrun simctl launch "${SIM_UDID}" com.air-devs.air)
+          echo "[sim-port] launched PID: $PID"
+          sleep 15
+          xcrun simctl terminate "${SIM_UDID}" com.air-devs.air || true
+          echo "[sim-port] launch+terminate OK"
+
+      - name: Upload probe log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-payload-probe.log
+          path: sim-payload.log
+          if-no-files-found: warn
+
+      - name: Upload simulator app (for black-box tests)
+        if: success()
+        run: |
+          set -e
+          # .app 是 bundle 目录：ditto 必须站在父目录打包相对路径，且加 --keepParent
+          # 否则 zip 里只有散内容、丢 .app 壳（simctl install 认壳）。
+          # --sequesterRsrc 保 symlink。
+          cd artifacts/Payload && ditto -c -k --sequesterRsrc --keepParent AngelAuraAmethyst.app "$GITHUB_WORKSPACE/sim-app.zip"
+          unzip -l "$GITHUB_WORKSPACE/sim-app.zip" | head -n 6
+
+      - name: Upload sim-app.zip
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-app-zip
+          path: sim-app.zip
+          if-no-files-found: error

@@ -1,0 +1,607 @@
+#import "LauncherRootViewController.h"
+#import "UITheme.h"
+#import "LauncherRouter.h"
+#import "LauncherMenuViewController.h"
+#import "LauncherNewsViewController.h"
+#import "LauncherRightPanelViewController.h"
+#import "DownloadViewController.h"
+#import "VersionManagerViewController.h"
+#import "ProfileSettingsViewController.h"
+#import "LauncherPreferencesViewController.h"
+#import "LauncherNavigationController.h"
+#import "LauncherPreferences.h"
+#import "BackgroundManager.h"
+#import "PLProfiles.h"
+#import "utils.h"
+#import "ModsManagerViewController.h"
+#import "ShadersManagerViewController.h"
+#import "ModpackImportViewController.h"
+#import "LauncherPrefGameDirViewController.h"
+#import "CustomControlsViewController.h"
+// ZeroTier/Terracotta 联机暂时移除（排查启动崩溃）
+// #import "MultiplayerViewController.h"
+// #import "TerracottaViewController.h"
+// #import "TerracottaManager.h"
+// #import "TerracottaBridge.h"
+#import "AccountListViewController.h"
+#import "AI/AIViewController.h"
+#import "AI/AiSessionStore.h"
+
+// 布局常量（iPad 基准值；iPhone 上通过 LauncherRootLayoutWidth 适配后会变窄）
+static const CGFloat kSidebarWidthPad = 70.0;      // iPad 左侧边栏宽度
+static const CGFloat kSidebarWidthPhone = 56.0;    // iPhone 左侧边栏宽度（仅图标）
+static const CGFloat kRightPanelWidthPad = 220.0;  // iPad 右侧面板宽度
+static const CGFloat kRightPanelWidthPhone = 168.0; // iPhone 右侧面板宽度（保证按钮文字可读）
+
+/// 检测物理设备是否为 iPhone（不受 debug.debug_ipad_ui 的 idiom hook 影响）。
+/// UIKit+hook.m 会把 idiom 强制改成 Pad，导致 trait.userInterfaceIdiom 不可靠。
+/// 这里用 UIDevice.model 检测真实设备类型。
+static BOOL LauncherRootIsPhysicalPhone(void) {
+    NSString *model = [[UIDevice currentDevice].model lowercaseString];
+    return [model containsString:@"iphone"];
+}
+
+/// 根据物理设备类型决定侧栏宽度（与 LauncherCardLayoutViewController 保持一致）
+static CGFloat LauncherRootLayoutSidebarWidth(UITraitCollection *trait) {
+    if (LauncherRootIsPhysicalPhone()) return kSidebarWidthPhone;
+    return kSidebarWidthPad;
+}
+
+/// 根据物理设备类型决定右侧面板宽度
+static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
+    if (LauncherRootIsPhysicalPhone()) return kRightPanelWidthPhone;
+    return kRightPanelWidthPad;
+}
+
+@interface LauncherRootViewController ()
+
+@property(nonatomic, strong) UIView *sidebarContainer;
+@property(nonatomic, strong) UIView *contentContainer;
+@property(nonatomic, strong) UIView *rightPanelContainer;
+
+@property(nonatomic, strong) NSLayoutConstraint *contentLeadingConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *contentTrailingConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *sidebarWidthConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *rightPanelWidthConstraint;
+// 关键修复（UI 累积异常）：setContentViewController: 之前每次切换都激活 4 个新约束
+// （leading/trailing/top/bottom 到 contentContainer），但旧 VC 的约束未显式 deactivate。
+// 在 tmpRootVC 保留场景下，缓存复用的子 VC 反复激活约束，layout 解算时 leading/trailing
+// 约束叠加导致 contentContainer 内容区左右变宽。现持有当前约束并先 deactivate 再激活。
+@property(nonatomic, strong) NSArray<NSLayoutConstraint *> *currentContentConstraints;
+
+// P5a: isShowingProfileEditor/profileEditorVC 改由 <LauncherShellContainer> 协议声明，
+// 本体用 @synthesize 显式合成（避免类扩展重声明协议属性触发 Clang 非法重声明诊断）。
+
+@end
+
+@implementation LauncherRootViewController
+
+// P5a: 显式合成协议属性（与原类扩展自动合成的 _isShowingProfileEditor/_profileEditorVC 同名，行为一致）。
+@synthesize isShowingProfileEditor = _isShowingProfileEditor;
+@synthesize profileEditorVC = _profileEditorVC;
+
+#pragma mark - Lifecycle
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+
+    self.view.backgroundColor = [UIColor clearColor];
+
+    // 初始化版本列表（必须在其他视图控制器之前）
+    [self initializeVersionLists];
+
+    // 创建三个容器视图
+    [self setupContainers];
+
+    // 添加子视图控制器
+    [self setupChildViewControllers];
+
+    // 应用背景
+    [[BackgroundManager sharedManager] applyBackgroundToView:self.view];
+
+    // 监听外观变更（字体颜色 / 卡片颜色），与 Card 布局保持一致
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(applyCustomAppearance)
+                                                 name:kRouterLauncherAppearanceChanged
+                                               object:nil];
+    [self applyCustomAppearance];
+}
+
+- (BOOL)prefersStatusBarHidden {
+    return YES;
+}
+
+- (void)initializeVersionLists {
+    // 初始化本地版本列表
+    if (!localVersionList) {
+        localVersionList = [NSMutableArray new];
+    }
+    [localVersionList removeAllObjects];
+    
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSString *versionPath = [NSString stringWithFormat:@"%s/versions/", getenv("POJAV_GAME_DIR")];
+    NSArray *list = [fileManager contentsOfDirectoryAtPath:versionPath error:nil];
+    for (NSString *versionId in list) {
+        NSString *localPath = [NSString stringWithFormat:@"%s/versions/%@", getenv("POJAV_GAME_DIR"), versionId];
+        BOOL isDirectory;
+        if ([fileManager fileExistsAtPath:localPath isDirectory:&isDirectory] && isDirectory) {
+            [localVersionList addObject:@{
+                @"id": versionId,
+                @"type": @"custom"
+            }];
+        }
+    }
+    
+    // 初始化远程版本列表
+    if (!remoteVersionList) {
+        remoteVersionList = [NSMutableArray new];
+    }
+    [remoteVersionList removeAllObjects];
+    [remoteVersionList addObjectsFromArray:@[
+        @{@"id": @"latest-release", @"type": @"release"},
+        @{@"id": @"latest-snapshot", @"type": @"snapshot"}
+    ]];
+    
+    // 异步获取远程版本列表
+    [self fetchRemoteVersionList];
+}
+
+- (void)fetchRemoteVersionList {
+    NSString *downloadSource = getPrefObject(@"general.download_source");
+    NSString *versionManifestURL;
+    
+    if ([downloadSource isEqualToString:@"bmclapi"]) {
+        versionManifestURL = @"https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json";
+    } else {
+        versionManifestURL = @"https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+    }
+    
+    NSURL *url = [NSURL URLWithString:versionManifestURL];
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (data && !error) {
+            NSError *jsonError;
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+            if (json && json[@"versions"]) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [remoteVersionList addObjectsFromArray:json[@"versions"]];
+                    setPrefObject(@"internal.latest_version", json[@"latest"]);
+                    NSDebugLog(@"[LauncherRootVC] Loaded %d remote versions", remoteVersionList.count);
+                });
+            }
+        } else {
+            NSDebugLog(@"[LauncherRootVC] Failed to fetch version list: %@", error.localizedDescription);
+        }
+    }];
+    [task resume];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [[BackgroundManager sharedManager] resumeVideo];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [[BackgroundManager sharedManager] pauseVideo];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    // iPhone 与 iPad 切换、或分屏调整大小时，更新侧栏与右侧面板宽度
+    CGFloat sidebarWidth = LauncherRootLayoutSidebarWidth(self.traitCollection);
+    CGFloat rightPanelWidth = LauncherRootLayoutRightPanelWidth(self.traitCollection);
+    if (self.sidebarWidthConstraint.constant != sidebarWidth) {
+        self.sidebarWidthConstraint.constant = sidebarWidth;
+    }
+    if (self.rightPanelWidthConstraint.constant != rightPanelWidth) {
+        self.rightPanelWidthConstraint.constant = rightPanelWidth;
+    }
+    // 通知子 VC 重新布局
+    for (UIViewController *child in self.childViewControllers) {
+        [child.view setNeedsLayout];
+    }
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    // 修复：移除原先对 nav 栈所有 VC 一刀切注入负 additionalSafeAreaInsets.top 的逻辑。
+    // 该负 inset 会导致两个严重问题：
+    //   1. 设置页等使用 safeAreaLayoutGuide.topAnchor 布局的 VC，其内容被推到导航栏之上（"飞到顶上"），
+    //      外观调整等选项无法正常滚动和操作。
+    //   2. Java 管理等 push 进来的子页面，前一个页面的内容因为负 inset 透出在当前页面下方，
+    //      形成"前一页面没有及时消失"的视觉残留。
+    // "大白条"问题已通过 makeViewControllerTransparent（将 VC view 背景设为 clearColor）
+    // + applyEffectToNavigationBar（导航栏毛玻璃）解决，不再需要此 hack。
+    //
+    // 关键修复（UI 累积异常）：之前仅清理 NEGATIVE .top 的 additionalSafeAreaInsets，
+    // 未覆盖 .left/.right/.bottom 与正值累积。在 tmpRootVC 保留场景下，若其他路径
+    // 累加 left/right inset，此方法无法兜底，导致 contentContainer 内容区左右变宽。
+    // 现清理所有方向的非零 inset。
+    UIViewController *contentVC = _contentViewController;
+    if (!contentVC) return;
+    if ([contentVC isKindOfClass:[UINavigationController class]]) {
+        UINavigationController *nav = (UINavigationController *)contentVC;
+        for (UIViewController *vc in nav.viewControllers) {
+            UIEdgeInsets insets = vc.additionalSafeAreaInsets;
+            if (insets.top != 0 || insets.left != 0 || insets.right != 0 || insets.bottom != 0) {
+                vc.additionalSafeAreaInsets = UIEdgeInsetsZero;
+            }
+        }
+    } else {
+        UIEdgeInsets insets = contentVC.additionalSafeAreaInsets;
+        if (insets.top != 0 || insets.left != 0 || insets.right != 0 || insets.bottom != 0) {
+            contentVC.additionalSafeAreaInsets = UIEdgeInsetsZero;
+        }
+    }
+}
+
+#pragma mark - Setup
+
+- (void)setupContainers {
+    // 左侧边栏容器 - 半透明，仅保留外侧（左上/左下）圆角，避免与中间容器相邻处形成凹槽
+    self.sidebarContainer = [[UIView alloc] init];
+    self.sidebarContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    self.sidebarContainer.layer.cornerRadius = 16;
+    self.sidebarContainer.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
+    self.sidebarContainer.layer.masksToBounds = YES;
+    [[BackgroundManager sharedManager] applyEffectToView:self.sidebarContainer];
+    [self.view addSubview:self.sidebarContainer];
+
+    // 中间内容容器 - 完全透明，四角直角（内部塞入 nav controller + table view，圆角会裁剪内容且无视觉收益）
+    self.contentContainer = [[UIView alloc] init];
+    self.contentContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    self.contentContainer.backgroundColor = [UIColor clearColor];
+    [self.view addSubview:self.contentContainer];
+
+    // 右侧面板容器 - 半透明，仅保留外侧（右上/右下）圆角
+    self.rightPanelContainer = [[UIView alloc] init];
+    self.rightPanelContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    self.rightPanelContainer.layer.cornerRadius = 16;
+    self.rightPanelContainer.layer.maskedCorners = kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
+    self.rightPanelContainer.layer.masksToBounds = YES;
+    [[BackgroundManager sharedManager] applyEffectToView:self.rightPanelContainer];
+    [self.view addSubview:self.rightPanelContainer];
+    
+    // 设置约束
+    // 使用可变宽度约束，便于 traitCollection 变化时更新（iPhone/iPad 适配）
+    self.sidebarWidthConstraint = [self.sidebarContainer.widthAnchor constraintEqualToConstant:LauncherRootLayoutSidebarWidth(self.traitCollection)];
+    self.rightPanelWidthConstraint = [self.rightPanelContainer.widthAnchor constraintEqualToConstant:LauncherRootLayoutRightPanelWidth(self.traitCollection)];
+
+    [NSLayoutConstraint activateConstraints:@[
+        // 左侧边栏
+        [self.sidebarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.sidebarContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.sidebarContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        self.sidebarWidthConstraint,
+
+        // 右侧面板
+        [self.rightPanelContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.rightPanelContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.rightPanelContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        self.rightPanelWidthConstraint,
+
+        // 中间内容区——填满侧栏与右面板之间的空间
+        [self.contentContainer.leadingAnchor constraintEqualToAnchor:self.sidebarContainer.trailingAnchor],
+        [self.contentContainer.trailingAnchor constraintEqualToAnchor:self.rightPanelContainer.leadingAnchor],
+        [self.contentContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.contentContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
+}
+
+- (void)setupChildViewControllers {
+    // 左侧边栏 - 功能菜单
+    LauncherMenuViewController *sidebarVC = [[LauncherMenuViewController alloc] init];
+    [self addChildViewController:sidebarVC];
+    sidebarVC.view.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.sidebarContainer addSubview:sidebarVC.view];
+    [NSLayoutConstraint activateConstraints:@[
+        [sidebarVC.view.leadingAnchor constraintEqualToAnchor:self.sidebarContainer.leadingAnchor],
+        [sidebarVC.view.trailingAnchor constraintEqualToAnchor:self.sidebarContainer.trailingAnchor],
+        [sidebarVC.view.topAnchor constraintEqualToAnchor:self.sidebarContainer.topAnchor],
+        [sidebarVC.view.bottomAnchor constraintEqualToAnchor:self.sidebarContainer.bottomAnchor]
+    ]];
+    [sidebarVC didMoveToParentViewController:self];
+    _sidebarViewController = sidebarVC;
+    
+    // 中间内容 - 默认显示新闻页
+    LauncherNewsViewController *newsVC = [[LauncherNewsViewController alloc] init];
+    [self setContentViewController:newsVC animated:NO];
+    
+    // 右侧面板 - 账户和启动
+    LauncherRightPanelViewController *rightPanelVC = [[LauncherRightPanelViewController alloc] init];
+    [self addChildViewController:rightPanelVC];
+    rightPanelVC.view.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.rightPanelContainer addSubview:rightPanelVC.view];
+    [NSLayoutConstraint activateConstraints:@[
+        [rightPanelVC.view.leadingAnchor constraintEqualToAnchor:self.rightPanelContainer.leadingAnchor],
+        [rightPanelVC.view.trailingAnchor constraintEqualToAnchor:self.rightPanelContainer.trailingAnchor],
+        [rightPanelVC.view.topAnchor constraintEqualToAnchor:self.rightPanelContainer.topAnchor],
+        [rightPanelVC.view.bottomAnchor constraintEqualToAnchor:self.rightPanelContainer.bottomAnchor]
+    ]];
+    [rightPanelVC didMoveToParentViewController:self];
+    _rightPanelViewController = rightPanelVC;
+    
+    // 注册通知监听
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showHomePage)
+                                                 name:kRouterShowHomePage
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showDownloadPage)
+                                                 name:kRouterShowDownloadPage
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showVersionManager)
+                                                 name:kRouterShowVersionManager
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showProfileEditor:)
+                                                 name:kRouterShowProfileEditor
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showSettings)
+                                                 name:kRouterShowSettings
+                                               object:nil];
+    // 监听显示 AI 助手页面
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showAIPage)
+                                                 name:kRouterShowAIPage
+                                               object:nil];
+    // ZeroTier/Terracotta 联机暂时移除（排查启动崩溃）
+    // [[NSNotificationCenter defaultCenter] addObserver:self
+    //                                          selector:@selector(ame_showMultiplayer)
+    //                                              name:kRouterShowMultiplayer
+    //                                            object:nil];
+    // [[NSNotificationCenter defaultCenter] addObserver:self
+    //                                          selector:@selector(ame_showZeroTier)
+    //                                              name:kRouterShowZeroTier
+    //                                            object:nil];
+    // 首页快捷瓷砖触发：切到对应内容区子页面（不再 FormSheet 弹窗）
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showModsManager)
+                                                 name:kRouterShowModsManager
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showShadersManager)
+                                                 name:kRouterShowShadersManager
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showModpackImport)
+                                                 name:kRouterShowModpackImport
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showGameDirectory)
+                                                 name:kRouterShowGameDirectory
+                                               object:nil];
+    // FCL 风格：账户管理在中间内容区显示（不再 FormSheet 弹窗）
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_showAccountManager)
+                                                 name:kRouterShowAccountManager
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_backgroundChanged)
+                                                 name:kRouterBackgroundChanged
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(uiEffectChanged:)
+                                                 name:kRouterBackgroundUIEffectChanged
+                                               object:nil];
+    // 监听版本切换，重新加载编辑器
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_reloadProfileEditorIfNeeded)
+                                                 name:kRouterSelectedProfileChanged
+                                               object:nil];
+    // 监听游戏目录切换，重新加载版本列表
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_reloadVersionLists)
+                                                 name:kRouterReloadProfileList
+                                               object:nil];
+    // 监听查找版本请求
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(ame_findVersionInRemoteList:)
+                                                 name:kRouterFindVersionInRemoteList
+                                               object:nil];
+}
+
+// P5a: findVersionInRemoteList:/reloadVersionLists 已移入共享路由
+// （ame_findVersionInRemoteList:/ame_reloadVersionLists）。
+
+// P5a: 19 个共享路由方法已移入 UIViewController+LauncherShellRouting（ame_ 前缀），
+// 本体仅保留容器相关、代理方法与 dealloc。
+
+// ZeroTier/Terracotta 联机暂时移除（排查启动崩溃）
+// - (void)showMultiplayer { ... TerracottaViewController ... }
+// - (void)showZeroTier { ... MultiplayerViewController ... TerracottaManager ... }
+// P5a: showMultiplayer/showZeroTier/showMultiplayerDisabledAlert 已移入共享路由。
+
+// P5a: showModsManager/showShadersManager/showGameDirectory/showModpackImport/showAccountManager 已移入共享路由。
+
+// P5a: backgroundChanged 已移入共享路由（ame_backgroundChanged）。
+
+- (void)uiEffectChanged:(NSNotification *)notification {
+    // 重新应用毛玻璃/半透明效果到容器视图
+    [[BackgroundManager sharedManager] applyEffectToView:self.sidebarContainer];
+    [[BackgroundManager sharedManager] applyEffectToView:self.rightPanelContainer];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+#pragma mark - Custom Appearance（字体颜色 / 卡片颜色，与 Card 布局一致）
+
+- (void)applyCustomAppearance {
+    // 应用自定义卡片颜色（半透明覆盖 BackgroundManager 的毛玻璃，而非完全替换）
+    NSString *cardColor = getPrefObject(@"general.card_color");
+    if (cardColor.length > 0) {
+        UIColor *color = [self colorFromHexString:cardColor];
+        if (color) {
+            // 使用半透明颜色覆盖毛玻璃，alpha 提升到 0.85 增强可见度。
+            // 之前 0.7 太淡，浅色背景几乎看不出效果。
+            // 保留毛玻璃（backgroundColor 叠加在 UIVisualEffectView 之上），
+            // 既显示卡片色调又透出背景图。
+            CGFloat r, g, b, a;
+            if ([color getRed:&r green:&g blue:&b alpha:&a]) {
+                UIColor *semiColor = [UIColor colorWithRed:r green:g blue:b alpha:MIN(a, 0.85)];
+                [self applySemiTransparentColor:semiColor toContainer:self.sidebarContainer];
+                [self applySemiTransparentColor:semiColor toContainer:self.rightPanelContainer];
+            }
+        }
+    } else {
+        // 未设置自定义颜色时，恢复毛玻璃效果
+        [self restoreEffectToContainer:self.sidebarContainer];
+        [self restoreEffectToContainer:self.rightPanelContainer];
+    }
+    // 通知右侧面板、菜单等子 VC 同步刷新外观（text_color / card_color 联动）
+    RouterPost(kRouterLauncherAppearanceApplied, nil, nil);
+}
+
+- (void)applySemiTransparentColor:(UIColor *)color toContainer:(UIView *)container {
+    // 保留 BackgroundManager 的毛玻璃 UIVisualEffectView，在其上叠加半透明纯色
+    // 这样既显示用户自定义的卡片颜色，又能透出背景图
+    container.backgroundColor = color;
+}
+
+- (void)restoreEffectToContainer:(UIView *)container {
+    container.backgroundColor = [UIColor clearColor];
+    // 检查是否已有毛玻璃，没有则重新应用
+    BOOL hasBlur = NO;
+    for (UIView *sub in container.subviews) {
+        if ([sub isKindOfClass:[UIVisualEffectView class]]) {
+            hasBlur = YES;
+            break;
+        }
+    }
+    if (!hasBlur) {
+        [[BackgroundManager sharedManager] applyEffectToView:container];
+    }
+}
+
+- (UIColor *)colorFromHexString:(NSString *)hexString {
+    // P8 alpha 裁决：收敛到 UITheme（RRGGBBAA）。原 8 位 AARRGGBB 分支与 Menu 互斥，
+    // 仓库内零 8 位字面量、用户默认全 6 位——既有渲染逐值不变。保留方法壳，调用点不动。
+    return UIThemeColorFromHexWithAlpha(hexString);
+}
+
+#pragma mark - Content Switching
+
+- (void)setContentViewController:(UIViewController *)viewController animated:(BOOL)animated {
+    if (!viewController) return;
+
+    // 关键修复（UI 累积异常）：同一实例直接跳过，避免对同一 VC 重复添加约束
+    // 和反复调用 applyEffectToNavigationBar: 导致 hairline UIImageView 累积。
+    if (viewController == _contentViewController) return;
+
+    // 检查是否切换到非编辑器页面
+    if (![viewController isKindOfClass:[UINavigationController class]] ||
+        ![((UINavigationController *)viewController).topViewController isKindOfClass:[ProfileSettingsViewController class]]) {
+        self.isShowingProfileEditor = NO;
+        self.profileEditorVC = nil;
+    }
+
+    UIViewController *oldVC = _contentViewController;
+
+    // 移除旧的 + 添加新的
+    _contentViewController = viewController;
+    [self addChildViewController:viewController];
+    viewController.view.translatesAutoresizingMaskIntoConstraints = NO;
+
+    // FCL 风格：对 UINavigationController 应用 nav bar 毛玻璃效果，并对内容 VC 透明化处理，
+    // 避免顶部出现默认白色 nav bar 形成"大白条"，同时与两侧深色毛玻璃面板视觉一致。
+    if ([viewController isKindOfClass:[UINavigationController class]]) {
+        UINavigationController *nav = (UINavigationController *)viewController;
+        nav.delegate = self;
+        [[BackgroundManager sharedManager] applyEffectToNavigationBar:nav.navigationBar];
+        // 透明化 topViewController，让背景透出 nav bar 毛玻璃
+        [[BackgroundManager sharedManager] makeViewControllerTransparent:nav.topViewController];
+        // 透明化 nav 栈中所有已存在的 VC（防止前一个页面透出残留）
+        for (UIViewController *stackVC in nav.viewControllers) {
+            [[BackgroundManager sharedManager] makeViewControllerTransparent:stackVC];
+        }
+    } else {
+        // 非导航控制器包装的 VC 也透明化，确保与背景融合
+        [[BackgroundManager sharedManager] makeViewControllerTransparent:viewController];
+    }
+
+    // 关键修复（UI 累积异常）：deactivate 旧约束，避免在 tmpRootVC 保留场景下
+    // 缓存复用的子 VC 反复激活约束导致 contentContainer 内容区左右变宽。
+    if (self.currentContentConstraints.count > 0) {
+        [NSLayoutConstraint deactivateConstraints:self.currentContentConstraints];
+        self.currentContentConstraints = nil;
+    }
+
+    NSArray<NSLayoutConstraint *> *newConstraints = @[
+        [viewController.view.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor],
+        [viewController.view.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor],
+        [viewController.view.topAnchor constraintEqualToAnchor:self.contentContainer.topAnchor],
+        [viewController.view.bottomAnchor constraintEqualToAnchor:self.contentContainer.bottomAnchor]
+    ];
+
+    if (animated && oldVC) {
+        // 修复问题5：原实现用两个独立的 UIView transitionWithView:（一个移除旧视图、一个添加新视图），
+        // 两个 crossDissolve 同时作用于 contentContainer 会导致视觉冲突和残影（旧画面未完全消失就覆盖新界面）。
+        // 改为单个 transition：在同一个 animations block 内完成"移除旧视图 + 添加新视图"，
+        // crossDissolve 会正确抓取前后快照做交叉渐变，completion 中清理旧 VC 父子关系。
+        //
+        // 关键修复（入场动画从左上角弹出）：UIKit 在 animations block 返回后立即对容器做 snapshot，
+        // 此时新视图虽然已 addSubview + activateConstraints，但尚未经历 layout pass，frame 仍是
+        // (0,0,0,0)。配合 contentContainer 子视图（contentCard）的 masksToBounds+圆角裁剪，
+        // crossDissolve 渐变呈现"从左上角小点扩展出来"的怪异效果。
+        // 在 animations block 内显式 layoutIfNeeded 强制立即布局，让 snapshot B 时 frame 已撑满，
+        // crossDissolve 就是标准的淡入淡出。duration 由 0.25 调整为 0.3 让过渡更柔和自然。
+        [UIView transitionWithView:self.contentContainer
+                          duration:0.3
+                           options:UIViewAnimationOptionTransitionCrossDissolve
+                        animations:^{
+                            [oldVC willMoveToParentViewController:nil];
+                            [oldVC.view removeFromSuperview];
+                            [self.contentContainer addSubview:viewController.view];
+                            [NSLayoutConstraint activateConstraints:newConstraints];
+                            [self.contentContainer layoutIfNeeded];
+                        } completion:^(BOOL finished) {
+                            [oldVC removeFromParentViewController];
+                            [viewController didMoveToParentViewController:self];
+                        }];
+    } else {
+        if (oldVC) {
+            [oldVC willMoveToParentViewController:nil];
+            [oldVC.view removeFromSuperview];
+            [oldVC removeFromParentViewController];
+        }
+        [self.contentContainer addSubview:viewController.view];
+        [NSLayoutConstraint activateConstraints:newConstraints];
+        [viewController didMoveToParentViewController:self];
+    }
+
+    self.currentContentConstraints = newConstraints;
+}
+
+#pragma mark - Orientation
+
+- (BOOL)shouldAutorotate {
+    return YES;
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    return UIInterfaceOrientationMaskLandscape;
+}
+
+#pragma mark - UINavigationControllerDelegate
+
+/// 当 nav 栈 push 或 pop 完成后，对新显示的 VC 透明化处理，
+/// 确保所有 push 进来的子页面（如 Java 管理、模组管理、整合包导入等）
+/// 都能透出自定义启动器背景，而非显示默认的 systemBackgroundColor（白色）。
+- (void)navigationController:(UINavigationController *)navigationController
+       didShowViewController:(UIViewController *)viewController
+                    animated:(BOOL)animated {
+    // 透明化刚显示的 VC
+    [[BackgroundManager sharedManager] makeViewControllerTransparent:viewController];
+    // 同时透明化栈中所有 VC（防止前一个页面透出残留，解决"前一页面未及时消失"问题）
+    for (UIViewController *stackVC in navigationController.viewControllers) {
+        [[BackgroundManager sharedManager] makeViewControllerTransparent:stackVC];
+    }
+    // 重新应用导航栏毛玻璃效果（防止 push 后 nav bar 样式被重置）
+    [[BackgroundManager sharedManager] applyEffectToNavigationBar:navigationController.navigationBar];
+}
+
+@end
