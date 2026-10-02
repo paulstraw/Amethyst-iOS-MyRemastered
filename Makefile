@@ -387,7 +387,7 @@ dep_mg:
 		echo '[dep_mg] WARNING: 3rdparty pin alignment skipped (AMETHYST_MG_PIN_ALIGN=0) -- MG build NOT validated'; \
 	else \
 		mkdir -p /tmp/mgpin_patches; \
-		cp "$$mg3"/*.patch /tmp/mgpin_patches/ 2>/dev/null; \
+		cp "$$mg3"/*.patch /tmp/mgpin_patches/ 2>/dev/null || true; \
 		align3rd() { \
 			mg_name=$$1; mg_url=$$2; mg_sha=$$3; \
 			if [ -f "$$mg3/$$mg_name/.air_pin_$$mg_sha" ]; then \
@@ -403,7 +403,7 @@ dep_mg:
 		}; \
 		align3rd SPIRV-Cross https://codeload.github.com/KhronosGroup/SPIRV-Cross/tar.gz/a0fba56c34a6700f1724bf9b751da5b488a3775c a0fba56 || { echo 'ERROR: [dep_mg] 3rdparty pin alignment failed - cannot build a validated MobileGlues'; exit 1; }; \
 		align3rd glslang https://codeload.github.com/KhronosGroup/glslang/tar.gz/f5f664dee8146676b04a332a7233959fc3ce9681 f5f664d || { echo 'ERROR: [dep_mg] 3rdparty pin alignment failed - cannot build a validated MobileGlues'; exit 1; }; \
-		cp /tmp/mgpin_patches/*.patch "$$mg3/" 2>/dev/null; \
+		cp /tmp/mgpin_patches/*.patch "$$mg3/" 2>/dev/null || true; \
 		echo '[dep_mg] 3rdparty pinned: SPIRV-Cross=a0fba56 glslang=f5f664d (xxhash already matches c2866db)'; \
 	fi
 	mkdir -p $(WORKINGDIR)/mobileglues
