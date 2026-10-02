@@ -131,14 +131,18 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
     self.menuStackView.axis         = compact ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
     self.menuStackView.alignment    = compact ? UIStackViewAlignmentFill     : UIStackViewAlignmentCenter;
     // ★ [TOP-BAR] 改成 Fill + 末尾弹簧:图标维持自身尺寸并靠左,不再被等宽摊开
-    self.menuStackView.distribution = UIStackViewDistributionFill;
-    self.menuStackView.spacing      = compact ? 10.0 : kE2LandscapeSpacing;
+    // ★ [TOP-BAR] 用户:"间隔等宽" ⇒ 用 FillEqually(每个按钮等宽 ⇒ 视觉上间隔也均匀)
+    self.menuStackView.distribution = compact ? UIStackViewDistributionFillEqually
+                                              : UIStackViewDistributionEqualSpacing;
+    self.menuStackView.spacing      = compact ? 8.0 : kE2LandscapeSpacing;
     // ★ [TOP-BAR] 顶栏:松开栈的右边钉、并让菜单视图宽度=栈宽 ⇒ 整条工具条贴合内容
     if (compact) {
-        // ★ [TOP-BAR-FIX] 回退"工具条贴合内容":那会把整条压成一个小方块(用户实测)。
-        //   保留:通条宽度 + 图标靠左紧挨(靠 Fill + 弹簧)。
-        self.ameHugWidthConstraint.active = NO;
-        self.ameStackTrailingConstraint.active = YES;
+        // ★ [TOP-BAR] 贴合内容:轴向 bug(竖排)已修,这次正确 —— 工具条只占内容那么宽
+        self.ameStackTrailingConstraint.active = NO;
+        if (!self.ameHugWidthConstraint) {
+            self.ameHugWidthConstraint = [self.view.widthAnchor constraintEqualToAnchor:self.menuStackView.widthAnchor];
+        }
+        self.ameHugWidthConstraint.active = YES;
         if (NO) {
         if (!self.ameMenuSpacer) {
             UIView *sp = [[UIView alloc] init];
@@ -174,14 +178,15 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
         BOOL isPlaceholder  = [item[@"placeholder"] boolValue];
         BOOL landscapeOnly  = [item[@"landscapeOnly"] boolValue];
 
-        // 可见性:
-        //  - 占位项:竖屏隐藏(4 项等分即可);横屏【保持 visible 但不可见内容】以占位,防止其余按钮位移。
-        //  - 横屏独有项(多人游戏):竖屏隐藏。
-        if (isPlaceholder || landscapeOnly) {
-            btn.hidden = compact;
+        // 可见性(★ [TOP-BAR-FIX] 工具栏已搬到【顶部】⇒ 旧的两条隐藏规则过时):
+        //  - 占位项(空白,原为横屏侧栏的灵动岛让位):顶部形态不需要 ⇒ 一律隐藏;
+        //  - 横屏独有项(多人游戏):以前只在侧栏显示,现在顶栏横着有地方 ⇒ 两种形态都显示。
+        if (isPlaceholder) {
+            btn.hidden = YES;
         } else {
             btn.hidden = NO;
         }
+        (void)landscapeOnly;
 
         if (!isPlaceholder) {
             UILabel *lbl = (UILabel *)[btn viewWithTag:kE2LabelTag];
@@ -194,9 +199,12 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
             }
         }
 
-        // ★ [TOP-BAR] 两种模式都保留固定尺寸(顶栏要图标保持原大小)
+        // ★ [TOP-BAR] 固定尺寸;顶栏形态统一成 56×44 ⇒ 所有按钮【等宽】(不再被长短标签撑差)
+        NSUInteger sizeIdx = 0;
         for (NSLayoutConstraint *c in self.buttonSizeConstraints[i]) {
             c.active = YES;
+            c.constant = compact ? (sizeIdx == 0 ? 56.0 : 44.0) : c.constant;
+            sizeIdx++;
         }
     }
 
@@ -247,12 +255,9 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
     self.menuItems = @[
         @{@"icon": @"house.fill",             @"portrait": @"实例", @"landscape": @"实例",   @"index": @0},
         @{@"icon": @"arrow.down.circle.fill", @"portrait": @"下载", @"landscape": @"下载中心", @"index": @1},
-        // ★ AI 入口从侧栏移出(横屏时灵动岛正好压在这一格上 ⇒ 竖列均分的正中)。
-        //   这里保留【同尺寸占位】而不是删除:删掉会让 UIStackView(EqualSpacing) 重新均分,
-        //   其余按钮的位置会整体位移。占位尺寸与按钮一致 ⇒ 几何完全不变,只是不显示。
-        //   [E2] 竖屏底栏不需要占位(4 项 FillEqually 等分),故 landscapeOnly=YES。
-        @{@"icon": @"", @"portrait": @"", @"landscape": @"", @"index": @2,
-          @"placeholder": @YES, @"landscapeOnly": @YES},
+        // ★ [TOP-BAR-FIX] AI 入口恢复显示:工具栏已搬到【顶部】,灵动岛在条外,
+        //   原来"让位给灵动岛"的空占位不再需要(用户:"那 ai 按钮呢")。
+        @{@"icon": @"sparkles", @"portrait": @"AI", @"landscape": @"AI", @"index": @2},
         @{@"icon": @"puzzlepiece.fill",       @"portrait": @"资源", @"landscape": @"资源管理", @"index": @3},
         // [E2] 多人游戏:E-land 行 17(🌐 多人游戏),横屏侧栏第 4 项,竖屏底栏不放。
         @{@"icon": @"network",                @"portrait": @"",     @"landscape": @"多人游戏", @"index": @4,
@@ -691,7 +696,8 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
             [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowDownloadPage" object:nil];
             break;
 
-        case 2: // 灵动岛占位(不可点,不会到达)
+        case 2: // ★ AI 入口(工具栏搬到顶部后恢复;原为"让位给灵动岛"的空占位)
+            [self showAI];
             break;
 
         case 3: // 资源 / 资源管理(版本管理,合并了原"当前版本设置"功能)
@@ -706,6 +712,18 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
             [self showSettings];
             break;
     }
+}
+
+- (void)showAI {
+    // ★ 直接 present AI 会话列表(自包含,不依赖 RootVC 的通知处理器)
+    Class cls = NSClassFromString(@"AISessionListViewController");
+    if (!cls) { NSLog(@"[E2][MENU] AISessionListViewController 不存在,AI 入口无动作"); return; }
+    UIViewController *vc = [[cls alloc] init];
+    if (!vc) return;
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
+    nav.modalPresentationStyle = UIModalPresentationFullScreen;
+    UIViewController *host = self.view.window.rootViewController ?: self;
+    [host presentViewController:nav animated:YES completion:nil];
 }
 
 - (void)showVersionManager {

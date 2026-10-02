@@ -269,8 +269,8 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
     self.sidebarWidthConstraint.active = NO;
     NSLayoutConstraint *ameTopBarLeading = [self.sidebarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor];
     NSLayoutConstraint *ameTopBarTop     = [self.sidebarContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor];
-    // ★ [TOP-BAR-FIX] 回退 ≤(会把工具条压小)⇒ 恢复通条:右端到右栏之前
-    NSLayoutConstraint *ameTopBarTrail   = [self.sidebarContainer.trailingAnchor constraintEqualToAnchor:self.rightPanelContainer.leadingAnchor];
+    // ★ [TOP-BAR] ≤:工具条贴合自身内容,可早于右栏结束
+    NSLayoutConstraint *ameTopBarTrail   = [self.sidebarContainer.trailingAnchor constraintLessThanOrEqualToAnchor:self.rightPanelContainer.leadingAnchor];
     NSLayoutConstraint *ameTopBarHeight  = [self.sidebarContainer.heightAnchor constraintEqualToConstant:56.0];
     self.ameTopBarConstraints = @[ameTopBarLeading, ameTopBarTop, ameTopBarTrail, ameTopBarHeight];
 
