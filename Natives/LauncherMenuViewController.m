@@ -91,6 +91,11 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
 // ★ [UI-A] 菜单条上下内边距约束(竖屏横排时收紧,给按钮留居中余量)
 @property(nonatomic, strong) NSLayoutConstraint *stackTopInsetConstraint;
 @property(nonatomic, strong) NSLayoutConstraint *stackBottomInsetConstraint;
+// ★ [TOP-BAR] 末尾弹簧:吃掉剩余宽度 ⇒ 图标保持原尺寸、靠左紧挨(不再被 FillEqually 摊开)
+@property(nonatomic, strong) UIView *ameMenuSpacer;
+// ★ [TOP-BAR] 顶栏"贴合内容":松开栈的右边钉、给菜单视图一个"等于栈宽"的约束
+@property(nonatomic, strong) NSLayoutConstraint *ameStackTrailingConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *ameHugWidthConstraint;
 // ★ [E2] 当前是否竖屏(底部标签栏)。NO = 横屏(左侧栏)。
 @property(nonatomic, assign) BOOL compactLayout;
 @property(nonatomic, assign) BOOL hasPendingCompact;
@@ -125,9 +130,34 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
     //    横屏:竖向一列、居中、按最小间距均分(E-glass 行 98 侧栏 gap 5)。
     self.menuStackView.axis         = compact ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
     self.menuStackView.alignment    = compact ? UIStackViewAlignmentFill     : UIStackViewAlignmentCenter;
-    self.menuStackView.distribution = compact ? UIStackViewDistributionFillEqually
-                                              : UIStackViewDistributionEqualSpacing;
-    self.menuStackView.spacing      = compact ? 0.0 : kE2LandscapeSpacing;
+    // ★ [TOP-BAR] 改成 Fill + 末尾弹簧:图标维持自身尺寸并靠左,不再被等宽摊开
+    self.menuStackView.distribution = UIStackViewDistributionFill;
+    self.menuStackView.spacing      = compact ? 10.0 : kE2LandscapeSpacing;
+    // ★ [TOP-BAR] 顶栏:松开栈的右边钉、并让菜单视图宽度=栈宽 ⇒ 整条工具条贴合内容
+    if (compact) {
+        self.ameStackTrailingConstraint.active = NO;
+        if (!self.ameHugWidthConstraint) {
+            self.ameHugWidthConstraint = [self.view.widthAnchor constraintEqualToAnchor:self.menuStackView.widthAnchor];
+        }
+        self.ameHugWidthConstraint.active = YES;
+        if (NO) {
+        if (!self.ameMenuSpacer) {
+            UIView *sp = [[UIView alloc] init];
+            sp.backgroundColor = [UIColor clearColor];
+            sp.userInteractionEnabled = NO;
+            [sp setContentHuggingPriority:1 forAxis:UILayoutConstraintAxisHorizontal];
+            [sp setContentCompressionResistancePriority:1 forAxis:UILayoutConstraintAxisHorizontal];
+            self.ameMenuSpacer = sp;
+        }
+        }
+    } else {
+        self.ameHugWidthConstraint.active = NO;
+        self.ameStackTrailingConstraint.active = YES;
+        if (self.ameMenuSpacer.superview == self.menuStackView) {
+            [self.menuStackView removeArrangedSubview:self.ameMenuSpacer];
+            [self.ameMenuSpacer removeFromSuperview];
+        }
+    }
 
     // 2) 上下内边距(E-glass 底栏 56 高 / 侧栏 padding 10)
     CGFloat inset = compact ? 6.0 : 8.0;
@@ -165,9 +195,9 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
             }
         }
 
-        // 尺寸约束:竖屏撤掉固定尺寸(靠 FillEqually/Fill 撑满),横屏用固定尺寸。
+        // ★ [TOP-BAR] 两种模式都保留固定尺寸(顶栏要图标保持原大小)
         for (NSLayoutConstraint *c in self.buttonSizeConstraints[i]) {
-            c.active = !compact;
+            c.active = YES;
         }
     }
 
@@ -316,7 +346,7 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
     self.stackBottomInsetConstraint = [self.menuStackView.bottomAnchor constraintEqualToAnchor:self.sidebarView.bottomAnchor constant:-8];
     [NSLayoutConstraint activateConstraints:@[
         [self.menuStackView.leadingAnchor constraintEqualToAnchor:self.sidebarView.leadingAnchor],
-        [self.menuStackView.trailingAnchor constraintEqualToAnchor:self.sidebarView.trailingAnchor],
+        (self.ameStackTrailingConstraint = [self.menuStackView.trailingAnchor constraintEqualToAnchor:self.sidebarView.trailingAnchor]),
         self.stackTopInsetConstraint,
         self.stackBottomInsetConstraint,
         [self.menuStackView.centerXAnchor constraintEqualToAnchor:self.sidebarView.centerXAnchor]

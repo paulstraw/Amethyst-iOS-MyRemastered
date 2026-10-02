@@ -60,6 +60,8 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
 @property(nonatomic, strong) NSLayoutConstraint *contentLeadingConstraint;
 @property(nonatomic, strong) NSLayoutConstraint *contentTrailingConstraint;
 @property(nonatomic, strong) NSLayoutConstraint *sidebarWidthConstraint;
+// ★ [TOP-BAR] 顶栏那组约束(侧栏横条:贴顶/高56/右端停在右栏之前)
+@property(nonatomic, strong) NSArray<NSLayoutConstraint *> *ameTopBarConstraints;
 @property(nonatomic, strong) NSLayoutConstraint *rightPanelWidthConstraint;
 // 关键修复（UI 累积异常）：setContentViewController: 之前每次切换都激活 4 个新约束
 // （leading/trailing/top/bottom 到 contentContainer），但旧 VC 的约束未显式 deactivate。
@@ -261,25 +263,40 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
     self.sidebarWidthConstraint = [self.sidebarContainer.widthAnchor constraintEqualToConstant:LauncherRootLayoutSidebarWidth(self.traitCollection)];
     self.rightPanelWidthConstraint = [self.rightPanelContainer.widthAnchor constraintEqualToConstant:LauncherRootLayoutRightPanelWidth(self.traitCollection)];
 
-    [NSLayoutConstraint activateConstraints:@[
-        // 左侧边栏
-        [self.sidebarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.sidebarContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [self.sidebarContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-        self.sidebarWidthConstraint,
+    // ★ [TOP-BAR] 侧栏由「左侧竖栏」改为【顶部横条】(用户实测反馈):
+    //   ① 贴顶、高 56;② 右端停在右栏(用户头像)之前 ⇒ 不压头像;
+    //   ③ 内容区 leading 直接贴屏边 ⇒ 占掉原工具栏那条竖带;④ 右栏保持通高、贴右上。
+    self.sidebarWidthConstraint.active = NO;
+    NSLayoutConstraint *ameTopBarLeading = [self.sidebarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor];
+    NSLayoutConstraint *ameTopBarTop     = [self.sidebarContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor];
+    // ★ [TOP-BAR] 用 ≤:工具条可以比"到右栏为止"更早结束 ⇒ 贴合自身内容(用户:"像把左栏拉长横过来")
+    NSLayoutConstraint *ameTopBarTrail   = [self.sidebarContainer.trailingAnchor constraintLessThanOrEqualToAnchor:self.rightPanelContainer.leadingAnchor];
+    NSLayoutConstraint *ameTopBarHeight  = [self.sidebarContainer.heightAnchor constraintEqualToConstant:56.0];
+    self.ameTopBarConstraints = @[ameTopBarLeading, ameTopBarTop, ameTopBarTrail, ameTopBarHeight];
 
-        // 右侧面板
+    [NSLayoutConstraint activateConstraints:@[
+        // 顶部横条(原左侧边栏)
+        ameTopBarLeading, ameTopBarTop, ameTopBarTrail, ameTopBarHeight,
+
+        // 右侧面板(用户头像):保持通高、贴右上
         [self.rightPanelContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.rightPanelContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.rightPanelContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         self.rightPanelWidthConstraint,
 
-        // 中间内容区——填满侧栏与右面板之间的空间
-        [self.contentContainer.leadingAnchor constraintEqualToAnchor:self.sidebarContainer.trailingAnchor],
+        // 中间内容区:占满左侧(含原工具栏竖带),top 从顶栏下沿开始
+        [self.contentContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.contentContainer.trailingAnchor constraintEqualToAnchor:self.rightPanelContainer.leadingAnchor],
-        [self.contentContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.contentContainer.topAnchor constraintEqualToAnchor:self.sidebarContainer.bottomAnchor],
         [self.contentContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
+
+    // ★ [TOP-BAR] 横条形态下菜单要横排(否则竖着一列图标会被 56pt 裁掉)
+    for (UIViewController *child in self.childViewControllers) {
+        if ([child respondsToSelector:@selector(setCompactHorizontalLayout:)]) {
+            [child performSelector:@selector(setCompactHorizontalLayout:) withObject:@(YES)];
+        }
+    }
 }
 
 - (void)setupChildViewControllers {
