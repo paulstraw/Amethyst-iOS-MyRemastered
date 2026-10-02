@@ -388,6 +388,12 @@ add_executable(AngelAuraAmethyst
   dyld_patch_platform.m
   main.m
   main_hook.m
+  # ★ [LINK511] 换底 5.1.0 时漏掉的 fork 独有源(上游 5.1.0 的 add_executable 里有):
+  #   sdl3_hook.m 定义 ame_hook_getEmbeddedSDLView / ame_sdlVulkanWindowActive /
+  #   amethyst_sdl3_hook_resolve(分别被 gl_bridge.m / egl_bridge.m / main_hook.m 引用);
+  #   shaderc_include.c 为 Task 47 RenderPearl `#include <minecraft:...>` 展开器(上游 exe 列表成员)。
+  sdl3_hook.m
+  shaderc_include.c
   JavaLauncher.m
   external/fishhook/fishhook.c
   UIKit+hook.m
@@ -599,6 +605,8 @@ add_executable(AngelAuraAmethyst
 
   # Update checker（参考 FCL/ZL2，使用 GitHub Releases API 检查正式版更新）
   UpdateChecker.m
+  # ★ [LINK511] 换底 5.1.0 时漏掉(定义 UpdateDialogViewController,被 UpdateChecker.m 引用)
+  UpdateDialogViewController.m
 
   # Minecraft 新闻（参考 PCL-CE，调用 minecraft-services.net 官方新闻 API）
   MinecraftNewsItem.m
