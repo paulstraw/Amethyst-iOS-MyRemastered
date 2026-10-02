@@ -359,6 +359,33 @@ BOOL JVMUsedInProcess(void) {
     return gJvmUsedInProcess;
 }
 
+// ★ [AGENT-GATE] 从版本 id 解析 MC 主版本号 —— **原样移植自上游**
+//   herbrine8403/Amethyst-iOS-MyRemastered `Natives/JavaLauncher.m`(main, fix/java8-agent)。
+//   1.x → 1;26.2/26.3/26w14a → 26;其它 → 0。
+//   上游用它把 metallum_agent 的挂载限制在 MC major >= 26(agent 的 class 是 65.0/Java21+ 编译,
+//   老版本 MC 走 Java 8 会 UnsupportedClassVersionError ⇒ "processing of -javaagent failed" ⇒ JVM abort)。
+NSInteger ame98_mcMajorFromVersionId(NSString *versionId) {
+    if (![versionId isKindOfClass:[NSString class]] || versionId.length == 0) {
+        return 0;
+    }
+    NSRegularExpression *legacyRegex = [NSRegularExpression
+        regularExpressionWithPattern:@"(?:^|[-_])1\\.\\d" options:0 error:nil];
+    if ([legacyRegex firstMatchInString:versionId
+                                options:0
+                                  range:NSMakeRange(0, versionId.length)]) {
+        return 1;
+    }
+    NSRegularExpression *yearRegex = [NSRegularExpression
+        regularExpressionWithPattern:@"(?:^|[-_])(\\d{2})(?=[.w])" options:0 error:nil];
+    NSTextCheckingResult *match = [yearRegex firstMatchInString:versionId
+                                                        options:0
+                                                          range:NSMakeRange(0, versionId.length)];
+    if (match && match.numberOfRanges >= 2) {
+        return [[versionId substringWithRange:[match rangeAtIndex:1]] integerValue];
+    }
+    return 0;
+}
+
 int launchJVM(NSString *accountId, id launchTarget, int width, int height, int minVersion) {
     NSLog(@"[JavaLauncher] Beginning JVM launch");
 
@@ -867,28 +894,38 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
   
     NSString *librariesPath = [NSString stringWithFormat:@"%@/libs", NSBundle.mainBundle.bundlePath];
     PUSH_MARGV_FORMAT(@"-javaagent:%@/patchjna_agent.jar=", librariesPath);
-    // Metallum (MetalUniversal) agent: only inject on vanilla (and Forge-style)
-    // instances. Fabric/Quilt instances use the bundled MetalUniversal mod (mixin),
-    // and adding the agent would duplicate ASM classes on the classpath
-    // (fabric-loader's verifyClasspath refuses to start).
-    BOOL isFabricOrQuilt =
-        [[NSFileManager defaultManager] fileExistsAtPath:
-            [@(getenv("POJAV_HOME")) stringByAppendingPathComponent:@"libraries/net/fabricmc/fabric-loader"]]
-        || [[NSFileManager defaultManager] fileExistsAtPath:
-            [@(getenv("POJAV_HOME")) stringByAppendingPathComponent:@"libraries/net/quiltmc/quilt-loader"]];
-    if (!isFabricOrQuilt
-        && [[NSFileManager defaultManager] fileExistsAtPath:
-            [librariesPath stringByAppendingPathComponent:@"metallum_agent.jar"]]) {
+    // ★ [AGENT-GATE] 判定 **对齐上游** herbrine8403/…/JavaLauncher.m(fix/java8-agent):
+    //   * **不做加载器判断** —— Fabric / Quilt / Forge 三加载器都由 agent 自己在 premain 分流
+    //     (上游注释:"Fabric 缺桩时跳过相应步骤、Forge 走 dummy provider")。
+    //     上游从不按加载器跳过注入;之前那套 isFabricOrQuilt 是本地加的,已删除。
+    //   * **只对 MC major >= 26 挂载**:agent 的 class 是 65.0(Java 21+) 编译,老版本 MC 走
+    //     Java 8(class 上限 52.0)⇒ UnsupportedClassVersionError ⇒ "processing of -javaagent
+    //     failed" ⇒ JVM 直接 abort。用上游同款解析函数 ame98_mcMajorFromVersionId()。
+    //   * **追加(用户要求)**:渲染器是 Metal/Metallum 才需要它;其它渲染器下 agent 自己也只打印
+    //     "non-Metal renderer: SDL stubs + metallum classes only" ⇒ 白担 classpath 风险。
+    NSString *launchId = [launchTarget isKindOfClass:NSDictionary.class]
+        ? [launchTarget[@"id"] description] : (NSString *)launchTarget;
+    NSInteger metallumMcMajor = ame98_mcMajorFromVersionId(launchId);
+    BOOL mcIs26Plus = (metallumMcMajor >= 26);
+    const char *rendC = getenv("AMETHYST_RENDERER");
+    NSString *renderer = rendC ? @(rendC) : @"";
+    NSString *rendererLower = renderer.lowercaseString;
+    BOOL rendererIsMetallum = [rendererLower containsString:@"metallum"] ||
+                              [rendererLower containsString:@"metal"];
+    BOOL wantsMetallumAgent = mcIs26Plus && rendererIsMetallum;
+    if (!wantsMetallumAgent) {
+        NSLog(@"[AGENT-GATE] MC=%@(major=%ld) 渲染器=%@ ⇒ %@,跳过 metallum_agent 注入",
+              launchId, (long)metallumMcMajor, renderer,
+              mcIs26Plus ? @"渲染器非 Metal" : @"版本不足 26");
+    }
+    if (wantsMetallumAgent
+        && [fm fileExistsAtPath:[librariesPath stringByAppendingPathComponent:@"metallum_agent.jar"]]) {
+        NSLog(@"[AGENT-GATE] 注入 metallum_agent(MC=%@ major=%ld 渲染器=%@)",
+              launchId, (long)metallumMcMajor, renderer);
         PUSH_MARGV_FORMAT(@"-javaagent:%@/metallum_agent.jar=", librariesPath);
-        // 把 MC 版本 id 传给 agent(1.21.x 多版本分支需要按版本选 metallum 类映射)
-        NSString *mcVersionId = nil;
-        if ([launchTarget isKindOfClass:NSDictionary.class]) {
-            mcVersionId = launchTarget[@"id"];
-        } else {
-            mcVersionId = launchTarget;
-        }
-        if (mcVersionId && mcVersionId.length > 0) {
-            PUSH_MARGV_FORMAT(@"-Dmetallum.mc.version=%@", mcVersionId);
+        // 把 MC 版本 id 传给 agent(按版本选 metallum 类映射)
+        if (launchId.length > 0) {
+            PUSH_MARGV_FORMAT(@"-Dmetallum.mc.version=%@", launchId);
         }
     }
     if(getPrefBool(@"general.cosmetica")) {

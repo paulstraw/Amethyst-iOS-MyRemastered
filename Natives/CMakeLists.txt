@@ -286,6 +286,102 @@ target_link_libraries(audio_capture
   "-framework AVFoundation"
 )
 
+# ============================================================================
+# ★ [SWIFT-BAR] SwiftUI 底部标签栏(Natives/AmeTabBar.swift)编译规则
+# ----------------------------------------------------------------------------
+#  为什么必须单开一条 swiftc 规则:本工程的 C/OBJC 都用 clang(CMake 的 C 编译器),
+#  **clang 编不了 Swift**;而工程是纯 CMake(没有 Xcode 工程文件)⇒ 用
+#  add_custom_command 调 swiftc 产出 AmeTabBar.o,再把该 .o 当外部对象加进
+#  add_executable(AngelAuraAmethyst ...) 的源列表(只追加,不动既有 OBJC 顺序)。
+#
+#  target triple 按平台自动判定(设备 / 模拟器),与 C 侧 minOS 一致(ios14.0):
+#    设备:   arm64-apple-ios14.0             (SDK = .../iPhoneOS*.sdk)
+#    模拟器: <arch>-apple-ios14.0-simulator  (SDK = .../iPhoneSimulator*.sdk)
+#
+#  链接:Swift 运行时在 SDK 的 usr/lib/swift(SDK 里有 libswiftCore.tbd 等),
+#  设备 iOS 12.2+ 的系统里也自带 /usr/lib/swift ⇒
+#    ① 不用打包任何 Swift dylib;② 不改 CFBundle;③ 只是给链接器 -L + rpath。
+#  若链接真报缺 libswift*,再按需补 -lswiftCore -lswiftFoundation -lswiftUIKit
+#  -lswiftSwiftUI(见 _uibuild/SWIFT_BAR_REPORT.md「链接参数怎么定的」)。
+# ============================================================================
+
+set(AME_TABBAR_SWIFT_SRC "${CMAKE_CURRENT_LIST_DIR}/AmeTabBar.swift")
+
+# 架构:C 侧统一走 CMAKE_OSX_ARCHITECTURES(Makefile 传 arm64);缺省退回宿主架构
+set(AME_SWIFT_ARCH "${CMAKE_OSX_ARCHITECTURES}")
+if(NOT AME_SWIFT_ARCH)
+  set(AME_SWIFT_ARCH "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+endif()
+
+# 设备 / 模拟器:看 -isysroot 指向的 SDK 路径里有没有 Simulator
+set(AME_SWIFT_TRIPLE "${AME_SWIFT_ARCH}-apple-ios14.0")
+if("${CMAKE_OSX_SYSROOT}" MATCHES "[Ss]imulator")
+  set(AME_SWIFT_TRIPLE "${AME_SWIFT_ARCH}-apple-ios14.0-simulator")
+endif()
+
+# Swift 运行时目录(SDK 内)
+set(AME_SWIFT_LIBDIR "${CMAKE_OSX_SYSROOT}/usr/lib/swift")
+# ★ [SWIFT-BAR] 回退兼容库(swiftCompatibility56/Concurrency/Packs)不在 SDK 里,
+#   只在【Xcode 工具链】的 usr/lib/swift/iphoneos 下 ⇒ 必须再给链接器一条 -L。
+get_filename_component(AME_XCODE_DEVDIR "${CMAKE_OSX_SYSROOT}/../../../../.." ABSOLUTE)
+set(AME_SWIFT_TOOLCHAIN_LIBDIR "${AME_XCODE_DEVDIR}/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos")
+if(NOT EXISTS "${AME_SWIFT_TOOLCHAIN_LIBDIR}")
+  set(AME_SWIFT_TOOLCHAIN_LIBDIR "${AME_XCODE_DEVDIR}/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift")
+endif()
+message(STATUS "★ [SWIFT-BAR] toolchain swift libdir = ${AME_SWIFT_TOOLCHAIN_LIBDIR}")
+
+# Release 加 -O(与 C 侧 CMAKE_BUILD_TYPE 对齐)
+set(AME_SWIFT_OPT_FLAGS "")
+if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+  set(AME_SWIFT_OPT_FLAGS "-O")
+endif()
+
+# swiftc:先找 PATH,再退回 xcrun(CI/无 PATH 的环境)
+find_program(AME_SWIFTC NAMES swiftc)
+if(NOT AME_SWIFTC)
+  execute_process(COMMAND xcrun -f swiftc
+                  OUTPUT_VARIABLE _ame_swiftc_hint
+                  OUTPUT_STRIP_TRAILING_WHITESPACE
+                  RESULT_VARIABLE _ame_swiftc_rc)
+  if(_ame_swiftc_rc EQUAL 0)
+    set(AME_SWIFTC "${_ame_swiftc_hint}")
+  endif()
+endif()
+
+# 若 Makefile 的 `swift` 目标已经先编好 .o 并 -DAME_TABBAR_OBJ 传进来,就直接复用
+if(AME_TABBAR_OBJ AND EXISTS "${AME_TABBAR_OBJ}")
+  set(AME_TABBAR_NEEDS_BUILD FALSE)
+else()
+  set(AME_TABBAR_OBJ "${CMAKE_CURRENT_BINARY_DIR}/AmeTabBar.o")
+  set(AME_TABBAR_NEEDS_BUILD TRUE)
+endif()
+
+# Swift 现在是底栏的唯一实现(LauncherMenuViewController.m 直接引用 AmeTabBarHost),
+# 编不出来就会在链接期报 undefined symbol ⇒ 这里直接给出可读的失败原因。
+if(AME_TABBAR_NEEDS_BUILD AND NOT AME_SWIFTC)
+  message(FATAL_ERROR "★ [SWIFT-BAR] 找不到 swiftc。AmeTabBar.swift(底栏)必须用 Swift 编译;"
+                      "请安装 Xcode / Command Line Tools,或确认 `xcrun -f swiftc` 可用。")
+endif()
+
+if(AME_TABBAR_NEEDS_BUILD)
+  add_custom_command(
+    OUTPUT  "${AME_TABBAR_OBJ}"
+    COMMAND "${AME_SWIFTC}" -parse-as-library -emit-object
+            -target "${AME_SWIFT_TRIPLE}"
+            -sdk "${CMAKE_OSX_SYSROOT}"
+            ${AME_SWIFT_OPT_FLAGS}
+            -o "${AME_TABBAR_OBJ}"
+            "${AME_TABBAR_SWIFT_SRC}"
+    DEPENDS "${AME_TABBAR_SWIFT_SRC}"
+    COMMENT "★ [SWIFT-BAR] swiftc ${AME_SWIFT_TRIPLE} -sdk ${CMAKE_OSX_SYSROOT} -> AmeTabBar.o"
+    VERBATIM)
+  add_custom_target(AmeTabBarSwift DEPENDS "${AME_TABBAR_OBJ}")
+endif()
+
+# 外部对象:CMake 只把它放进链接行,不去「编译」它
+set_source_files_properties("${AME_TABBAR_OBJ}" PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
+message(STATUS "★ [SWIFT-BAR] swiftc=${AME_SWIFTC} triple=${AME_SWIFT_TRIPLE} obj=${AME_TABBAR_OBJ} swiftlib=${AME_SWIFT_LIBDIR} build=${AME_TABBAR_NEEDS_BUILD}")
+
 # Angel Aura Amethyst
 add_executable(AngelAuraAmethyst
   dyld_bypass_validation.m
@@ -551,7 +647,17 @@ add_executable(AngelAuraAmethyst
   AI/AiSleepTool.m
   AI/AiDownloadProbe.m
   AI/AiInstanceCreator.m
+
+  # ★ [SWIFT-BAR] SwiftUI 底部标签栏目标文件(swiftc 产出;只追加,不动上面既有 OBJC 顺序)
+  ${AME_TABBAR_OBJ}
+  # ★ [ROOTTAB] 根标签栏控制器(真正的 UITabBarController;音乐/LiveContainer 同构)
+  AmeRootTabController.m
 )
+
+# ★ [SWIFT-BAR] 保证 AmeTabBar.o 先于链接生成(独立 cmake 构建时走这条)
+if(AME_TABBAR_NEEDS_BUILD)
+  add_dependencies(AngelAuraAmethyst AmeTabBarSwift)
+endif()
 
 # Add ModLoaderIcons PNG files into the app bundle Resources/ModLoaderIcons so they are available at runtime.
 # This will copy all *.png under Natives/ModLoaderIcons into the bundle at Resources/ModLoaderIcons/<name>.png
@@ -600,6 +706,12 @@ target_link_libraries(AngelAuraAmethyst
   "-framework UnzipKit"
   "-framework WebKit"
   "-weak_framework SafariServices"
+  # ★ [SWIFT-BAR] Swift 运行时:iOS 12.2+ 设备自带 /usr/lib/swift,SDK 里也有 .tbd
+  #   ⇒ 只给链接器搜索路径 + rpath,不打包任何 Swift dylib、不改 CFBundle。
+  "-L${AME_SWIFT_LIBDIR}"
+  # ★ [SWIFT-BAR] 工具链里的回退兼容库(缺这条就报 Undefined _swift_FORCE_LOAD_$_swiftCompatibility56)
+  "-L${AME_SWIFT_TOOLCHAIN_LIBDIR}"
+  "-Wl,-rpath,/usr/lib/swift"
   ${TOUCHCONTROLLER_LIB}
   # Terracotta multiplayer 暂时移除：${TERRACOTTA_LIB} "-lc++" "-lresolv"
 )

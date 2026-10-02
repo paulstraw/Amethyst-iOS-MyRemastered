@@ -257,7 +257,16 @@ static const NSInteger kDefaultBackgroundTag = 99995;
 - (void)saveBackgroundSettings {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setInteger:self.currentType forKey:kBackgroundTypeKey];
-    [defaults setObject:self.currentBackgroundPath forKey:kBackgroundPathKey];
+    // ★ [AUDIT] currentBackgroundPath 是 nullable(见头文件),clearBackgroundInternal /
+    //   loadSavedBackground 都会把它置为 nil;而 setObject:forKey: 传 nil 会抛
+    //   NSInvalidArgumentException(object cannot be nil)→ 崩溃(与
+    //   「setTitleTextAttributes:nil」属同一类「把 nil 传给非空参数」的崩法)。
+    //   nil 时改用 removeObjectForKey: 清除该键(NSUserDefaults 的官方清值方式)。
+    if (self.currentBackgroundPath.length > 0) {
+        [defaults setObject:self.currentBackgroundPath forKey:kBackgroundPathKey];
+    } else {
+        [defaults removeObjectForKey:kBackgroundPathKey];
+    }
     [defaults synchronize];
 }
 

@@ -58,10 +58,14 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
 //   竖屏形态：顶栏(原左栏)贴安全区顶部横排一条 ⇒ 内容区吃满剩余宽度 ⇒
 //   右栏(头像/启动)收成【底部一张卡】(竖屏再让它占 168pt 横带会把内容挤成一条缝)。
 static const CGFloat kPortraitOuterMargin     = 14.0;   // 竖屏屏边留白(与 Card 布局 kE1MarginPortrait 同一语言)
-static const CGFloat kPortraitTopBarHeight    = 56.0;   // 竖屏顶栏高(与横屏一致,菜单按钮 56×44+6+6)
-static const CGFloat kPortraitGap             = 10.0;   // 顶栏 ↔ 内容 ↔ 底部卡 之间间距
-static const CGFloat kPortraitRightPanelMinH  = 300.0;  // 竖屏底部卡最小高(内部约束更高时自动长高)
-static const CGFloat kPortraitTopBarCorner    = 14.0;   // 竖屏顶栏圆角(浮动条,四角)
+static const CGFloat kPortraitTopBarHeight    = 0.0;    // ★ [ROOTTAB] 底栏已转到根 UITabBarController ⇒ 这里不再留条(0)
+// ★ [NORIGHT] 右栏卡下线后,下面两个常量已无人引用 —— 标 __unused 保留原值备查(消掉"未使用变量"告警)。
+static const CGFloat kPortraitGap __unused            = 10.0;   // (原)顶栏 ↔ 内容 ↔ 底部卡 间距
+static const CGFloat kPortraitRightPanelMinH __unused = 300.0;   // (原)竖屏底部卡最小高
+// ★ [SYS-TABBAR] 顶栏圆角常量已不再使用:顶部工具栏改为系统 UITabBar 后,
+//   工具条圆角/玻璃形状由系统自己决定(容器上画圆角会把玻璃裁坏)。
+//   保留定义并标 __unused,方便将来回退/对照,且不产生"未使用变量"告警。
+static const CGFloat kPortraitTopBarCorner __unused = 14.0;   // (原)竖屏顶栏圆角
 static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角(与横屏右栏保持一致)
 
 // ★ [ROT-FIX] 菜单 VC 顶栏内容宽度(实现于 LauncherMenuViewController.m)。
@@ -86,6 +90,9 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 //   转屏后无人重算 ⇒ 会落到偏小的解而被 masksToBounds 裁掉一截。
 @property(nonatomic, strong) NSLayoutConstraint *ameTopBarWidthConstraint;
 @property(nonatomic, strong) NSLayoutConstraint *rightPanelWidthConstraint;
+// ★ [NORIGHT] 右栏卡片下线:面板容器的"归零"约束(横/竖两套集合同用这几个对象)。
+//   同一个对象被两套集合引用 ⇒ 任一时刻只有一套激活,不会造成"同一属性双钉"。
+@property(nonatomic, strong) NSArray<NSLayoutConstraint *> *norightPanelConstraints;
 
 // ★ [PORTRAIT-FIX] 竖屏/横屏两套约束(互斥激活,与 LauncherCardLayoutViewController 同思路):
 //   横屏 = 原有三栏形态(保持原样,零回归);竖屏 = 顶栏贴安全区 + 内容满宽 + 右栏收成底部卡。
@@ -231,10 +238,9 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     [super traitCollectionDidChange:previousTraitCollection];
-    // iPhone 与 iPad 切换、或分屏调整大小时，更新右侧面板宽度
-    CGFloat rightPanelWidth = LauncherRootLayoutRightPanelWidth(self.traitCollection);
-    if (self.rightPanelWidthConstraint.constant != rightPanelWidth) {
-        self.rightPanelWidthConstraint.constant = rightPanelWidth;
+    // ★ [NORIGHT] 右栏已下线:面板宽度恒为 0(该约束已不在任何激活集合里;这里保持常量 0 以免误导)。
+    if (self.rightPanelWidthConstraint.constant != 0.0) {
+        self.rightPanelWidthConstraint.constant = 0.0;
     }
     // ★ [ROT-FIX] 旧代码这里写 self.sidebarWidthConstraint.constant —— 但该约束在
     //   setupContainers 里已被 active=NO(顶栏改用“内容宽”显式约束),写它等于没写
@@ -354,13 +360,19 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 #pragma mark - Setup
 
 - (void)setupContainers {
-    // 左侧边栏容器 - 半透明，仅保留外侧（左上/左下）圆角，避免与中间容器相邻处形成凹槽
+    // ★ [SYS-TABBAR] 工具条容器 = 一个"透明定位框",玻璃完全交给里面的系统 UITabBar。
+    //   旧实现(用户实测「看不出是玻璃」「圆角不对(有直的地方)」的根因):
+    //     ① [[BackgroundManager sharedManager] applyEffectToView:] 自绘 UIVisualEffectView 模糊;
+    //     ② iOS 26 又叠了一层 UIGlassEffect(还要先把 ①拆掉才看得见);
+    //     ③ 圆角/裁剪(cornerRadius + maskedCorners + masksToBounds)画在【容器】上,
+    //        于是系统标签栏自带的液态玻璃形状被裁成圆角矩形 —— 圆角自然"有直的地方"。
+    //   现在:容器只负责"定位 + 尺寸"(顶栏高 56 / 右端到右栏前),不做任何绘制、不裁剪。
     self.sidebarContainer = [[UIView alloc] init];
     self.sidebarContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    self.sidebarContainer.layer.cornerRadius = 16;
-    self.sidebarContainer.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
-    self.sidebarContainer.layer.masksToBounds = YES;
-    [[BackgroundManager sharedManager] applyEffectToView:self.sidebarContainer];
+    self.sidebarContainer.backgroundColor = [UIColor clearColor];
+    self.sidebarContainer.layer.cornerRadius = 0.0;
+    self.sidebarContainer.layer.maskedCorners = 0;          // 不圆任何角
+    self.sidebarContainer.layer.masksToBounds = NO;         // ★ 绝不裁剪:否则切掉 UITabBar 的玻璃/圆角
     [self.view addSubview:self.sidebarContainer];
 
     // 中间内容容器 - 完全透明，四角直角（内部塞入 nav controller + table view，圆角会裁剪内容且无视觉收益）
@@ -377,6 +389,10 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
     self.rightPanelContainer.layer.masksToBounds = YES;
     [[BackgroundManager sharedManager] applyEffectToView:self.rightPanelContainer];
     [self.view addSubview:self.rightPanelContainer];
+    // ★ [NORIGHT] 右栏卡整个下线(用户拍板:「这张图片右边那一大块(右栏卡)把它干掉」):
+    //   容器保留在视图树里(面板 VC 才拿得到 window ⇒ 它的通知/present 语义不变),
+    //   但被钉成 0×0 + hidden ⇒ 横竖屏都不占一像素(归零约束见下方 norightPanelConstraints)。
+    self.rightPanelContainer.hidden = YES;
     
     // 设置约束
     // 使用可变宽度约束，便于 traitCollection 变化时更新（iPhone/iPad 适配）
@@ -390,29 +406,35 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
     NSLayoutConstraint *ameTopBarLeading = [self.sidebarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor];
     NSLayoutConstraint *ameTopBarTop     = [self.sidebarContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor];
     // ★ [TOP-BAR] ≤:工具条贴合自身内容,可早于右栏结束
-    NSLayoutConstraint *ameTopBarTrail   = [self.sidebarContainer.trailingAnchor constraintLessThanOrEqualToAnchor:self.rightPanelContainer.leadingAnchor];
-    NSLayoutConstraint *ameTopBarHeight  = [self.sidebarContainer.heightAnchor constraintEqualToConstant:56.0];
+    NSLayoutConstraint *ameTopBarTrail   = [self.sidebarContainer.trailingAnchor constraintEqualToAnchor:self.rightPanelContainer.leadingAnchor];
+    NSLayoutConstraint *ameTopBarHeight  = [self.sidebarContainer.heightAnchor constraintEqualToConstant:0.0];   // ★ [LAND-TOP] 横屏顶栏高度归零:用户报"横屏主页还是低" ⇒ 这 40pt 把内容整体压下去了(菜单已移到系统底栏,这里不再需要留条)
     // ★ [ROT-FIX] 显式顶栏宽度,优先级 999(< trailing ≤ 的 required) ⇒ 极窄屏时让 ≤ 上限赢，
     //   不会报 "Unable to simultaneously satisfy constraints"。仅加入【横屏】约束集。
     self.ameTopBarWidthConstraint = [self.sidebarContainer.widthAnchor constraintEqualToConstant:kAmeTopBarFallbackWidth];
     self.ameTopBarWidthConstraint.priority = UILayoutPriorityRequired - 1;
     self.ameTopBarConstraints = @[ameTopBarLeading, ameTopBarTop, ameTopBarTrail, ameTopBarHeight];
 
-    NSLayoutConstraint *ameLspRightPanelTrailing = [self.rightPanelContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor];
-    NSLayoutConstraint *ameLspRightPanelTop      = [self.rightPanelContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor];
-    NSLayoutConstraint *ameLspRightPanelBottom   = [self.rightPanelContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor];
+    // ★ [NORIGHT] 面板容器"归零"约束(横/竖两套集合同用这一批对象):
+    //   0×0 + 贴 view 左上角 ⇒ 不占任何可视宽/高;内容区改为直接贴屏边(满宽/满高)。
+    //   (面板 VC 内部那一大组 required 约束会在 setupChildViewControllers 里被整组停用,
+    //    否则 0×0 会与它们冲突并刷 "Unable to simultaneously satisfy constraints"。)
+    NSLayoutConstraint *norightPanelTop   = [self.rightPanelContainer.topAnchor     constraintEqualToAnchor:self.view.topAnchor];
+    NSLayoutConstraint *norightPanelLead  = [self.rightPanelContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor];
+    NSLayoutConstraint *norightPanelZeroW = [self.rightPanelContainer.widthAnchor   constraintEqualToConstant:0.0];
+    NSLayoutConstraint *norightPanelZeroH = [self.rightPanelContainer.heightAnchor  constraintEqualToConstant:0.0];
+    self.norightPanelConstraints = @[norightPanelLead, norightPanelTop, norightPanelZeroW, norightPanelZeroH];
+
     NSLayoutConstraint *ameLspContentLeading     = [self.contentContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor];
-    NSLayoutConstraint *ameLspContentTrailing    = [self.contentContainer.trailingAnchor constraintEqualToAnchor:self.rightPanelContainer.leadingAnchor];
+    NSLayoutConstraint *ameLspContentTrailing    = [self.contentContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor];   // ★ [NORIGHT] 原 = rightPanelContainer.leading
     NSLayoutConstraint *ameLspContentTop         = [self.contentContainer.topAnchor constraintEqualToAnchor:self.sidebarContainer.bottomAnchor];
     NSLayoutConstraint *ameLspContentBottom      = [self.contentContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor];
 
-    // ===== 横屏约束集(与改动前逐条一致 ⇒ 横屏零回归) =====
+    // ===== 横屏约束集 =====
+    // ★ [NORIGHT] 除"右栏归零"外与改动前逐条一致:顶栏照旧、内容区四边贴屏(不再给右栏留 168pt 竖带)。
     self.ameLandscapeConstraints = @[
         ameTopBarLeading, ameTopBarTop, ameTopBarTrail, ameTopBarHeight,
-        self.ameTopBarWidthConstraint,   // ★ [ROT-FIX] 横屏顶栏宽度由我们显式给定(不再只靠 hug)
-        ameLspRightPanelTrailing, ameLspRightPanelTop, ameLspRightPanelBottom,
-        self.rightPanelWidthConstraint,
-        ameLspContentLeading, ameLspContentTrailing, ameLspContentTop, ameLspContentBottom
+        ameLspContentLeading, ameLspContentTrailing, ameLspContentTop, ameLspContentBottom,
+        norightPanelLead, norightPanelTop, norightPanelZeroW, norightPanelZeroH
     ];
 
     // ===== ★ [PORTRAIT-FIX] 竖屏约束集 =====
@@ -422,32 +444,30 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
     //     ③ 顶部/底部都没吃安全区。
     //   竖屏形态:顶栏 = 贴安全区顶部的浮动横条(四角圆角);内容 = 吃满其下全部宽度;
     //             右栏(头像/启动) = 收成底部一张卡,底部避开 home indicator。
-    self.amePortraitTopBarLeading  = [self.sidebarContainer.leadingAnchor  constraintEqualToAnchor:self.view.leadingAnchor  constant:kPortraitOuterMargin];
-    self.amePortraitTopBarTop      = [self.sidebarContainer.topAnchor      constraintEqualToAnchor:self.view.topAnchor      constant:kPortraitOuterMargin];
-    self.amePortraitTopBarTrailing = [self.sidebarContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kPortraitOuterMargin];
-    NSLayoutConstraint *ptTopBarHeight = [self.sidebarContainer.heightAnchor constraintEqualToConstant:kPortraitTopBarHeight];
+    self.amePortraitTopBarLeading  = [self.sidebarContainer.leadingAnchor  constraintEqualToAnchor:self.view.leadingAnchor  constant:kPortraitOuterMargin];   // ★ [CAPSULE] 参考 LiveContainer:左右留边
+    // ★ [BOTTOM-BAR] 竖屏:标签栏从顶部搬到【屏幕底部】(用户要求,像 LiveContainer 底栏)。
+    self.amePortraitTopBarTop      = [self.sidebarContainer.bottomAnchor   constraintEqualToAnchor:self.view.bottomAnchor   constant:-(kPortraitOuterMargin)];   // ★ [CAPSULE] 底留一条缝(下面安全区再补)
+    self.amePortraitTopBarTrailing = [self.sidebarContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kPortraitOuterMargin];   // ★ [CAPSULE]
+    NSLayoutConstraint *ptTopBarHeight = [self.sidebarContainer.heightAnchor constraintEqualToConstant:0.0];   // ★ [NORIGHT] 原 92.0(自绘底栏占位;底栏已迁到根 UITabBarController ⇒ 这条 92pt 空带不该再占)
 
-    self.amePortraitCardLeading  = [self.rightPanelContainer.leadingAnchor  constraintEqualToAnchor:self.view.leadingAnchor  constant:kPortraitOuterMargin];
-    self.amePortraitCardTrailing = [self.rightPanelContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kPortraitOuterMargin];
-    self.amePortraitCardBottom   = [self.rightPanelContainer.bottomAnchor   constraintEqualToAnchor:self.view.bottomAnchor   constant:-kPortraitOuterMargin];
-    NSLayoutConstraint *ptCardMinHeight = [self.rightPanelContainer.heightAnchor constraintGreaterThanOrEqualToConstant:kPortraitRightPanelMinH];
-    // 「钉高」约束与 min 并存,优先级 = Low(250) ⇒ 右栏内部那一串 required 约束(头像/进度/启动按钮,
-    // 实测约需 340pt)高于 300 时自动让位,右栏按内部最小高自适应,且布局唯一不解算歧义;
-    // 内部能压到 300 时则取 300。用 required 写死高度会在小屏/大字号下产生 required 冲突。
-    self.amePortraitCardPinHeight = [self.rightPanelContainer.heightAnchor constraintEqualToConstant:kPortraitRightPanelMinH];
-    self.amePortraitCardPinHeight.priority = UILayoutPriorityDefaultLow;
+    // ★ [NORIGHT] ★★★ 竖屏"底部右栏卡"整块下线(用户:「这张图片的右边那一大块(右栏卡)把它干掉,
+    //   留更多空间给主页,里面的东西搬家」)★★★
+    //   面板原来的定位约束(leading / trailing / bottom / minHeight / pinHeight)【一条都不再创建】
+    //   ⇒ 天然不存在"同一属性被两套钉住";面板改用横屏那批 norightPanelConstraints(0×0 + hidden)。
+    //   (面板里"头像+用户名+版本"搬进主页欢迎卡、"启动游戏"搬成主页底部紧凑胶囊、
+    //    "JIT"搬成主页顶栏 pill、"执行Jar/选择版本"搬到实例页顶部 —— 行为全部转发原方法。)
 
     NSLayoutConstraint *ptContentLeading  = [self.contentContainer.leadingAnchor  constraintEqualToAnchor:self.view.leadingAnchor];
     NSLayoutConstraint *ptContentTrailing = [self.contentContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor];
-    NSLayoutConstraint *ptContentTop      = [self.contentContainer.topAnchor      constraintEqualToAnchor:self.sidebarContainer.bottomAnchor constant:kPortraitGap];
-    NSLayoutConstraint *ptContentBottom   = [self.contentContainer.bottomAnchor   constraintEqualToAnchor:self.rightPanelContainer.topAnchor constant:-kPortraitGap];
+    NSLayoutConstraint *ptContentTop      = [self.contentContainer.topAnchor      constraintEqualToAnchor:self.view.topAnchor constant:0];
+    // ★ [NORIGHT] 原 = rightPanelContainer.top - gap(内容区被那张卡压掉约 300pt);
+    //   现在四边贴屏 = 主页/内容区吃满全部空间,底部标签栏由内容 VC 自己的安全区自动让位。
+    NSLayoutConstraint *ptContentBottom   = [self.contentContainer.bottomAnchor   constraintEqualToAnchor:self.view.bottomAnchor constant:0];
 
-    self.amePortraitConstraints = @[
+    self.amePortraitConstraints = [@[
         self.amePortraitTopBarLeading, self.amePortraitTopBarTop, self.amePortraitTopBarTrailing, ptTopBarHeight,
-        self.amePortraitCardLeading, self.amePortraitCardTrailing, self.amePortraitCardBottom,
-        ptCardMinHeight, self.amePortraitCardPinHeight,
         ptContentLeading, ptContentTrailing, ptContentTop, ptContentBottom
-    ];
+    ] arrayByAddingObjectsFromArray:self.norightPanelConstraints];   // ★ [NORIGHT] 面板归零(与横屏同一批对象)
 
     // ★ [PORTRAIT-FIX] 圆角改用 continuous 曲线(更贴近设计稿;两套形态通用)
     if (@available(iOS 13.0, *)) {
@@ -487,19 +507,17 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
     self.ameLayoutModeApplied = YES;
 
     if (portrait) {
-        // ★ [PORTRAIT-FIX] 竖屏:顶栏/底部卡都是"浮动卡片" ⇒ 四角圆角;右栏不再通高。
-        self.sidebarContainer.layer.cornerRadius = kPortraitTopBarCorner;
-        self.sidebarContainer.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner |
-                                                    kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
+        // ★ [PORTRAIT-FIX] 竖屏:底部卡是"浮动卡片" ⇒ 四角圆角;右栏不再通高。
+        // ★ [SYS-TABBAR] 顶栏容器不再设圆角/裁剪 —— 工具条外观(含圆角)由里面的系统
+        //   UITabBar 自己决定;在容器上画圆角会把系统标签栏的玻璃形状裁坏。
         self.rightPanelContainer.layer.cornerRadius = kPortraitCardCorner;
         self.rightPanelContainer.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner |
                                                        kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
         [NSLayoutConstraint deactivateConstraints:self.ameLandscapeConstraints];
         [NSLayoutConstraint activateConstraints:self.amePortraitConstraints];
     } else {
-        // 横屏:维持原形态(顶栏只圆左侧两角、右栏通高只圆右侧两角)
-        self.sidebarContainer.layer.cornerRadius = 16.0;
-        self.sidebarContainer.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
+        // 横屏:维持原形态(右栏通高,只圆右侧两角)
+        // ★ [SYS-TABBAR] 同上:顶栏容器的圆角/遮罩交给系统 UITabBar。
         self.rightPanelContainer.layer.cornerRadius = 16.0;
         self.rightPanelContainer.layer.maskedCorners = kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
         [NSLayoutConstraint deactivateConstraints:self.amePortraitConstraints];
@@ -517,30 +535,29 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
     [self.view setNeedsLayout];
 
     // ★ [PORTRAIT-FIX] 自证日志(一行):装机后 `log stream --predicate 'eventMessage CONTAINS "[PORTRAIT-FIX]"'` 核对。
-    NSLog(@"[PORTRAIT-FIX][ROOT] layout=%@ size=%.0fx%.0f safe(top=%.0f bottom=%.0f left=%.0f right=%.0f) topBarH=%.0f cardPinH=%.0f",
+    NSLog(@"[PORTRAIT-FIX][ROOT][NORIGHT] layout=%@ size=%.0fx%.0f safe(top=%.0f bottom=%.0f left=%.0f right=%.0f) topBarH=%.0f rightPanel=%.0fx%.0f",
           portrait ? @"PORTRAIT" : @"LANDSCAPE",
           s.width, s.height,
           self.view.safeAreaInsets.top, self.view.safeAreaInsets.bottom,
           self.view.safeAreaInsets.left, self.view.safeAreaInsets.right,
-          self.sidebarContainer.bounds.size.height, kPortraitRightPanelMinH);
+          self.sidebarContainer.bounds.size.height,
+          self.rightPanelContainer.bounds.size.width, self.rightPanelContainer.bounds.size.height);
 }
 
-/// ★ [PORTRAIT-FIX] 安全区补偿:只改竖屏那套约束的常量(竖屏才激活 ⇒ 横屏不受影响)。
+/// ★ [NORIGHT] 安全区补偿:右栏卡片下线后,竖屏已无卡片需要补偿,顶栏容器也已 0 高。
+///   内容区四边贴屏 ⇒ 底部标签栏 / Home 条由**内容 VC 自己**的安全区(view.safeAreaInsets)让位,
+///   这里只把(已失效的)顶栏容器钉死在 0 处,并打一行自证日志。
 - (void)applyRootSafeAreaInsets {
-    if (!self.amePortraitTopBarTop || !self.amePortraitCardBottom) return;
-    UIEdgeInsets safe = UIEdgeInsetsZero;
-    if (@available(iOS 11.0, *)) {
-        safe = self.view.safeAreaInsets;
-    }
-    // 顶栏:避开灵动岛/刘海(safe.top) + 屏边留白
-    self.amePortraitTopBarTop.constant      =  kPortraitOuterMargin + safe.top;
-    // 底部卡:避开 home indicator(safe.bottom) + 屏边留白
-    self.amePortraitCardBottom.constant     = -(kPortraitOuterMargin + safe.bottom);
-    // 左右安全区(竖屏恒 0,横屏分屏/某些设备非 0 时也一并吃进)
-    self.amePortraitTopBarLeading.constant  =  kPortraitOuterMargin + safe.left;
-    self.amePortraitTopBarTrailing.constant = -(kPortraitOuterMargin + safe.right);
-    self.amePortraitCardLeading.constant    =  kPortraitOuterMargin + safe.left;
-    self.amePortraitCardTrailing.constant   = -(kPortraitOuterMargin + safe.right);
+    if (!self.amePortraitTopBarTop || !self.amePortraitTopBarLeading || !self.amePortraitTopBarTrailing) return;
+    // ★ [NORIGHT] 面板卡片的定位约束已全部不再创建 ⇒ 原来那几行 constant 写入已删除
+    //   (旧实现按 safe.left/right 把卡片左右往里推 —— 卡片没了,推它没有意义)。
+    self.amePortraitTopBarTop.constant      = 0;   // 贴屏幕最底(容器 0 高 ⇒ 不可见)
+    self.amePortraitTopBarLeading.constant  = 0;
+    self.amePortraitTopBarTrailing.constant = 0;
+    NSLog(@"[NORIGHT][ROOT] safeArea l=%.0f t=%.0f r=%.0f b=%.0f panel=%.0fx%.0f (右栏已下线:0×0+hidden,内容区四边贴屏)",
+          self.view.safeAreaInsets.left, self.view.safeAreaInsets.top,
+          self.view.safeAreaInsets.right, self.view.safeAreaInsets.bottom,
+          self.rightPanelContainer.bounds.size.width, self.rightPanelContainer.bounds.size.height);
 }
 
 - (void)setupChildViewControllers {
@@ -574,6 +591,10 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
         [rightPanelVC.view.bottomAnchor constraintEqualToAnchor:self.rightPanelContainer.bottomAnchor]
     ]];
     [rightPanelVC didMoveToParentViewController:self];
+    // ★ [NORIGHT] 右栏 UI 下线:停用面板内部的整组 required 约束(否则容器 0×0 会与它们冲突,
+    //   控制台会刷 "Unable to simultaneously satisfy constraints")。面板继续作为**不可见控制器**
+    //   存在 —— 通知监听、启动全链路、执行 Jar、版本选择、下载中心弹窗一律照旧。
+    [rightPanelVC norightCollapsePanelLayout:YES];
     _rightPanelViewController = rightPanelVC;
     
     // 注册通知监听
@@ -836,6 +857,12 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
     };
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
     nav.navigationBar.prefersLargeTitles = NO;
+    // ★ [ACCOUNTBACK] 账户链路“进得去出不来”修复(本处为根因另一半,详见 AccountListViewController.m 注释):
+    //   本页是**新 nav 的根**,系统不会给返回键 ⇒ 这里显式把导航栏显示出来(它本是唯一出口的载体),
+    //   并把 tintColor 定为语义色。返回键本身由 AccountListViewController 在 viewWillAppear 注入
+    //   (根页才注入;登录页 push 上去后走系统返回键)。只动外观,账户业务一行不改。
+    nav.navigationBarHidden = NO;
+    nav.navigationBar.tintColor = [UIColor labelColor];
     [self setContentViewController:nav animated:YES];
 }
 
@@ -846,7 +873,7 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 
 - (void)uiEffectChanged:(NSNotification *)notification {
     // 重新应用毛玻璃/半透明效果到容器视图
-    [[BackgroundManager sharedManager] applyEffectToView:self.sidebarContainer];
+    // ★ [SYS-TABBAR] 顶栏容器不再自绘效果:玻璃由里面的系统 UITabBar 提供。
     [[BackgroundManager sharedManager] applyEffectToView:self.rightPanelContainer];
 }
 
@@ -869,13 +896,13 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
             CGFloat r, g, b, a;
             if ([color getRed:&r green:&g blue:&b alpha:&a]) {
                 UIColor *semiColor = [UIColor colorWithRed:r green:g blue:b alpha:MIN(a, 0.85)];
-                [self applySemiTransparentColor:semiColor toContainer:self.sidebarContainer];
+                // ★ [SYS-TABBAR] 只给右栏卡片上色;顶栏容器保持透明(不能盖住系统标签栏玻璃)。
                 [self applySemiTransparentColor:semiColor toContainer:self.rightPanelContainer];
             }
         }
     } else {
         // 未设置自定义颜色时，恢复毛玻璃效果
-        [self restoreEffectToContainer:self.sidebarContainer];
+        // ★ [SYS-TABBAR] 顶栏容器不恢复自绘效果(玻璃由系统 UITabBar 提供)。
         [self restoreEffectToContainer:self.rightPanelContainer];
     }
     // 通知右侧面板、菜单等子 VC 同步刷新外观（text_color / card_color 联动）

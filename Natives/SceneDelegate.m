@@ -3,6 +3,7 @@
 #import "utils.h"
 #import "LauncherRootViewController.h"
 #import "LauncherCardLayoutViewController.h"
+#import "AmeRootTabController.h"   // ★ [ROOTTAB] 根标签栏控制器
 #import "LauncherPreferences.h"
 #import "BackgroundManager.h"
 // Terracotta 暂时移除（排查启动崩溃）
@@ -49,7 +50,10 @@ extern UIWindow *mainWindow;
     } else {
         rootVC = [[LauncherRootViewController alloc] init];
     }
-    self.window.rootViewController = rootVC;
+    // ★ [ROOTTAB] 根 = 真正的 UITabBarController(音乐/LiveContainer/SideStore 同构):
+    //   主页承载全部既有内容,系统自己画底栏(玻璃/高度/圆角/横竖屏全交给系统)。
+    //   旧做法把标签栏塞进 RootVC 内部的小容器 ⇒ 被判定紧凑环境 ⇒ 标题跑图标右边 + 实底纯黑。
+    self.window.rootViewController = [AmeRootTabController tabControllerWithHomeViewController:rootVC];
 
     // 外观模式（浅色/深色/跟随系统）：读 general.ui_theme 偏好。
     //   light  -> UIUserInterfaceStyleLight

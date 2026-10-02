@@ -11,6 +11,8 @@
 #import "BackgroundManager.h"
 #import "ios_uikit_bridge.h"
 #import "utils.h"
+// ★ [EDIT3] 头像设置入口:复用既有通知动作(LauncherRightPanelViewController norightPostAction:)。
+#import "LauncherRightPanelViewController.h"
 
 @interface AccountListViewController()<ASWebAuthenticationPresentationContextProviding>
 
@@ -79,6 +81,88 @@
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+#pragma mark - ★ [ACCOUNTBACK] 返回键(账户链路“进得去出不来”修复)
+
+/// ★ [ACCOUNTBACK] 每次出现时保证本页有一个**可用的返回出口**。
+///
+/// 根因(实查,见 _EDITMODE_REPORT.md ①):
+///   showAccountManager(LauncherRootViewController.m:848 / LauncherCardLayoutViewController.m:989)
+///   把本页作为**一个全新 UINavigationController 的根**(initWithRootViewController:)塞进中间内容区。
+///   根视图控制器没有可 pop 的上级 ⇒ UIKit 不会给返回键,导航栏虽然可见却是一个空壳
+///   ⇒ 用户从主页进得来、出不去。
+///
+/// 修法(不改任何账户业务逻辑,只补出口):
+///   ① 确认本页确实是“导航栈根、没有系统返回键”时,注入一枚「返回」左键;
+///      点击只发既有通知 ShowHomePage —— RootVC(:602) / CardLayoutVC(:752) 都已监听
+///      并切回主页,故不依赖具体宿主类,也不用复制任何导航代码。
+///   ② 顺带把承载本页的那个 nav 的导航栏显示出来(navigationBarHidden = NO)。
+///      ★ 这里**故意不做 viewWillDisappear 还原**:该 nav 是 showAccountManager 为账户链路
+///        临时新建、且只服务这一条链路的私有容器;若在 disappear 时还原成 hidden,
+///        紧接着 push 上来的登录页(AccountLoginViewController)就会丢掉系统返回键 ——
+///        那正是本任务要修的毛病。作用域仅限这条私有 nav,不会影响别的页面。
+///   ③ 触发时机放在 viewWillAppear:此时 navigationController 关系已经建立。
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self ameAccountEnsureBackItemIfNeeded];
+}
+
+/// ★ [ACCOUNTBACK] 见 viewWillAppear 注释。
+- (void)ameAccountEnsureBackItemIfNeeded {
+    UINavigationController *nav = self.navigationController;
+    if (!nav) return;                                       // 不在导航栈(无宿主 nav)⇒ 无从注入
+
+    // ① 显示导航栏:根页没有可 pop 的对象时,系统不会画返回键,空导航栏等于没有出口。
+    if (nav.navigationBarHidden) {
+        [nav setNavigationBarHidden:NO animated:NO];
+    }
+    // 语义色:随浅色/深色外观自适应(与主页顶栏同一套语义色),不写死黑白。
+    nav.navigationBar.tintColor = [UIColor labelColor];
+
+    // ★ [EDIT3] 自定义头像菜单的**新入口**:本页 = 点头像进入的「账户管理」页。
+    //   原来“长按主页欢迎卡头像”才能弹出的自定义头像菜单(导入 / 清除),其长按触发器已让位给
+    //   “长按进编辑模式”(见 LauncherNewsViewController.m ★[EDIT3]);为不丢功能,在此给一颗
+    //   明确可见的右键「自定义头像」:点击**只** post 既有动作名 avatarMenu ⇒ 仍由
+    //   LauncherRightPanelViewController 的 showAvatarMenu: 原实现弹出,菜单项/回调/账户校验/
+    //   裁剪保存链路一律不动;本页不复制任何头像逻辑。
+    //   幂等:已注入过就不再注入。按钮挂在本 VC 的 navigationItem 上 ⇒ 只有本页可见,
+    //   push 出去的登录页用的是它自己的 navigationItem,不受影响。
+    if (!self.navigationItem.rightBarButtonItem) {
+        UIBarButtonItem *avatarItem = [[UIBarButtonItem alloc] initWithTitle:localize(@"i18n_str_416", @"自定义头像")
+                                                                      style:UIBarButtonItemStylePlain
+                                                                     target:self
+                                                                     action:@selector(ameAccountAvatarSettingsTapped)];
+        avatarItem.tintColor = [UIColor labelColor];
+        avatarItem.accessibilityLabel = localize(@"i18n_str_416", @"自定义头像");
+        self.navigationItem.rightBarButtonItem = avatarItem;
+    }
+
+    // ② 只在“栈里没有再上一级(没有系统返回键)”时注入;已被 push 的页面保留系统返回键原样。
+    if (nav.viewControllers.count > 1) return;
+    if (self.navigationItem.leftBarButtonItem) return;      // 幂等:已注入过就不再注入
+
+    UIBarButtonItem *backItem = [[UIBarButtonItem alloc] initWithTitle:localize(@"resman.common.done", nil)
+                                                                style:UIBarButtonItemStylePlain
+                                                               target:self
+                                                               action:@selector(ameAccountBackToHomeTapped)];
+    backItem.tintColor = [UIColor labelColor];
+    backItem.accessibilityLabel = localize(@"resman.common.done", nil);
+    self.navigationItem.leftBarButtonItem = backItem;
+
+    // ③ 横屏时灵动岛在侧边(≈59pt):左键由系统导航栏摆放在 safeAreaLayoutGuide 内,天然不会被岛压住。
+}
+
+/// ★ [ACCOUNTBACK] 「返回」= 回主页。只发既有通知,不动任何账户业务(登录/登出/头像/用户名)。
+- (void)ameAccountBackToHomeTapped {
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowHomePage" object:nil];
+}
+
+/// ★ [EDIT3] 「自定义头像」= 弹自定义头像菜单(导入 / 清除)。
+///   只转发到既有动作名 avatarMenu ⇒ LauncherRightPanelViewController 的 showAvatarMenu: 原实现,
+///   菜单选项、回调、账户校验、裁剪/保存链路一律不变;本页不复制任何头像逻辑。
+- (void)ameAccountAvatarSettingsTapped {
+    [LauncherRightPanelViewController norightPostAction:@"avatarMenu"];
 }
 
 - (void)setupAddAccountButton {

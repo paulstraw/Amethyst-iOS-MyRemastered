@@ -999,6 +999,12 @@ static const void *kE1InstanceNameKey = &kE1InstanceNameKey;
     };
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
     nav.navigationBar.prefersLargeTitles = NO;
+    // ★ [ACCOUNTBACK] 账户链路“进得去出不来”修复(与 LauncherRootViewController 同根因,见 AccountListViewController.m 注释):
+    //   本页是**新 nav 的根** ⇒ 系统不会给返回键;这里显示导航栏 + 语义色 tintColor,
+    //   返回键由 AccountListViewController 在 viewWillAppear 注入(只发 ShowHomePage 通知回主页)。
+    //   只动外观,账户业务一行不改。
+    nav.navigationBarHidden = NO;
+    nav.navigationBar.tintColor = [UIColor labelColor];
     [self setContentViewController:nav animated:YES];
 }
 
@@ -1853,7 +1859,19 @@ static const void *kE1InstanceNameKey = &kE1InstanceNameKey;
 }
 
 - (void)e1NewInstanceTapped {
-    // 复用既有入口:打开版本管理页(新建/安装实例都在那里)
+    // ★ [FIX3] 与主页快捷入口(LauncherNewsViewController)同一个坑:本方法原来只发 ShowVersionManager,
+    //   而本页(卡片布局的主页 tab,index 0)自己的 showVersionManager 收到后会调 setContentViewController:,
+    //   把【主页内容区】整体换成版本管理页 ⇒ 用户返回后主页就永久停在版本管理(同类“串台”)。
+    //   改为:优先切到「实例」标签(index 3 —— 其根页本即 VersionManagerViewController)并 pop 回根页,
+    //   主页内容区完全不被替换;不在标签栏(老流程)时才回退原通知。业务结果不变:仍是打开版本管理。
+    UITabBarController *tbc = self.tabBarController;
+    if ([tbc isKindOfClass:[UITabBarController class]] &&
+        tbc.viewControllers.count > 3 &&
+        [tbc.viewControllers[3] isKindOfClass:[UINavigationController class]]) {
+        tbc.selectedIndex = 3;
+        [(UINavigationController *)tbc.viewControllers[3] popToRootViewControllerAnimated:YES];
+        return;
+    }
     [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowVersionManager" object:nil];
 }
 

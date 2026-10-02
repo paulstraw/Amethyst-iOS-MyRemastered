@@ -73,6 +73,36 @@ else
 $(error This platform is not currently supported for building Angel Aura Amethyst.)
 endif
 
+# ============================================================================
+# ★ [SWIFT-BAR] SwiftUI 底部标签栏(Natives/AmeTabBar.swift)编译变量
+# ----------------------------------------------------------------------------
+#  与 C 侧同样按平台判定 target:设备 arm64-apple-ios14.0,
+#  模拟器 <arch>-apple-ios14.0-simulator(看 SDKPATH 指向 iPhoneSimulator 与否)。
+#  swiftc 产出 $(WORKINGDIR)/AmeTabBar.o,路径再经 -DAME_TABBAR_OBJ=... 交给 CMake;
+#  CMakeLists.txt 里留着同一条 swiftc 规则,直接跑 cmake 时兜底。
+# ============================================================================
+SWIFTC        ?= $(shell xcrun -f swiftc 2>/dev/null || command -v swiftc 2>/dev/null || echo swiftc)
+SWIFT_SRC     ?= $(SOURCEDIR)/Natives/AmeTabBar.swift
+SWIFT_OBJ     ?= $(WORKINGDIR)/AmeTabBar.o
+SWIFT_ARCH    ?= arm64
+SWIFT_MIN_IOS ?= 14.0
+ifeq ($(findstring Simulator,$(SDKPATH)),Simulator)
+SWIFT_TARGET  ?= $(SWIFT_ARCH)-apple-ios$(SWIFT_MIN_IOS)-simulator
+else
+SWIFT_TARGET  ?= $(SWIFT_ARCH)-apple-ios$(SWIFT_MIN_IOS)
+endif
+
+# ★ [SWIFT-BAR] 编译 SwiftUI 底部标签栏(必须先于 native 的 cmake 链接)
+swift:
+	echo '[Amethyst v$(VERSION)] swift - start'
+	mkdir -p $(WORKINGDIR)
+	$(SWIFTC) -parse-as-library -emit-object \
+		-target $(SWIFT_TARGET) \
+		-sdk "$(SDKPATH)" \
+		$(if $(filter 1,$(RELEASE)),-O,) \
+		-o $(SWIFT_OBJ) $(SWIFT_SRC)
+	echo '[Amethyst v$(VERSION)] swift - end'
+
 # Define PLATFORM_NAME from PLATFORM
 ifeq ($(PLATFORM),2)
 PLATFORM_NAME := ios
@@ -255,7 +285,7 @@ check:
 		$(info $(shell printf "%-20s" "$(v)") = $(value $(v)))) \
 	)
 
-native: dep_mg
+native: dep_mg swift
 	echo '[Amethyst v$(VERSION)] native - start'
 	mkdir -p $(WORKINGDIR)
 	cd $(WORKINGDIR) && cmake \
@@ -267,6 +297,7 @@ native: dep_mg
 		-DCMAKE_OSX_ARCHITECTURES=arm64 \
 		-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
 		-DCMAKE_C_FLAGS="-arch arm64" \
+		-DAME_TABBAR_OBJ="$(SWIFT_OBJ)" \
 		-DCONFIG_BRANCH="$(BRANCH)" \
 		-DCONFIG_COMMIT="$(COMMIT)" \
 		-DCONFIG_RELEASE=$(RELEASE) \
@@ -461,4 +492,4 @@ clean:
 	rm -rf $(OUTPUTDIR)
 	echo '[Amethyst v$(VERSION)] clean - end'
 
-.PHONY: all clean check native java jre package dsym deploy help
+.PHONY: all clean check native java jre package dsym deploy help swift
