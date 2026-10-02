@@ -20,6 +20,3 @@
 [submodule "Natives/external/MobileGlues/MobileGlues-cpp/3rdparty/xxhash"]
 	path = Natives/external/MobileGlues/MobileGlues-cpp/3rdparty/xxhash
 	url = https://github.com/stbrumme/xxhash.git
-[submodule "Natives/external/MobileGlues/MobileGlues-cpp/include/ska"]
-	path = Natives/external/MobileGlues/MobileGlues-cpp/include/ska
-	url = https://github.com/MobileGL-Dev/flat_hash_map.git
