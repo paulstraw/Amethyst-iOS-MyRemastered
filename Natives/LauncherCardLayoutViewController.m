@@ -398,17 +398,15 @@ static const void *kE1InstanceNameKey = &kE1InstanceNameKey;
     if (portrait) {
         [NSLayoutConstraint deactivateConstraints:self.landscapeConstraints];
         [NSLayoutConstraint activateConstraints:self.portraitConstraints];
-        if (self.sidebarWidthConstraint) { self.sidebarWidthConstraint.active = NO; }
     } else {
         [NSLayoutConstraint deactivateConstraints:self.portraitConstraints];
         [NSLayoutConstraint activateConstraints:self.landscapeConstraints];
-        if (self.sidebarWidthConstraint) { self.sidebarWidthConstraint.active = YES; }
     }
-    // ★ [E1] 右栏退出布局(SPEC §5 G8)⇒ 其宽度约束保持关闭,不再随朝向激活。
-    self.rightPanelWidthConstraint.active = NO;
+    // ★ [TOP-BAR] 右栏(用户头像)两向常驻 ⇒ 宽度交给两套约束集合管理,不再强制关闭。
     // 菜单卡在竖屏走横向排布(图标横排一行),横屏恢复竖排
     if ([self.menuViewController respondsToSelector:@selector(setCompactHorizontalLayout:)]) {
-        [self.menuViewController performSelector:@selector(setCompactHorizontalLayout:) withObject:@(portrait)];
+        // ★ [TOP-BAR] 顶栏两向都是横条 ⇒ 菜单恒为紧凑横排(同时隐藏品牌头/版本脚,避免撑高)
+        [self.menuViewController performSelector:@selector(setCompactHorizontalLayout:) withObject:@(YES)];
     }
     [self applyEdgeInsets];
     [self.view setNeedsLayout];

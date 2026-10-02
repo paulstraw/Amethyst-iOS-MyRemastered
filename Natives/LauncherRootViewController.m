@@ -30,6 +30,9 @@ static const CGFloat kSidebarWidthPad = 70.0;      // iPad 左侧边栏宽度
 static const CGFloat kSidebarWidthPhone = 56.0;    // iPhone 左侧边栏宽度（仅图标）
 static const CGFloat kRightPanelWidthPad = 220.0;  // iPad 右侧面板宽度
 static const CGFloat kRightPanelWidthPhone = 168.0; // iPhone 右侧面板宽度（保证按钮文字可读）
+// ★ [ROT-FIX] 顶栏(工具条)兜底宽度:6 按钮×56 + 5 间距×8 = 376(与菜单紧凑形态一致);
+//   菜单子 VC 就绪后由 preferredTopBarWidth 覆盖。
+static const CGFloat kAmeTopBarFallbackWidth = 376.0;
 
 /// 检测物理设备是否为 iPhone（不受 debug.debug_ipad_ui 的 idiom hook 影响）。
 /// UIKit+hook.m 会把 idiom 强制改成 Pad，导致 trait.userInterfaceIdiom 不可靠。
@@ -51,6 +54,22 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
     return kRightPanelWidthPad;
 }
 
+// ★ [PORTRAIT-FIX] 竖屏布局常量。
+//   竖屏形态：顶栏(原左栏)贴安全区顶部横排一条 ⇒ 内容区吃满剩余宽度 ⇒
+//   右栏(头像/启动)收成【底部一张卡】(竖屏再让它占 168pt 横带会把内容挤成一条缝)。
+static const CGFloat kPortraitOuterMargin     = 14.0;   // 竖屏屏边留白(与 Card 布局 kE1MarginPortrait 同一语言)
+static const CGFloat kPortraitTopBarHeight    = 56.0;   // 竖屏顶栏高(与横屏一致,菜单按钮 56×44+6+6)
+static const CGFloat kPortraitGap             = 10.0;   // 顶栏 ↔ 内容 ↔ 底部卡 之间间距
+static const CGFloat kPortraitRightPanelMinH  = 300.0;  // 竖屏底部卡最小高(内部约束更高时自动长高)
+static const CGFloat kPortraitTopBarCorner    = 14.0;   // 竖屏顶栏圆角(浮动条,四角)
+static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角(与横屏右栏保持一致)
+
+// ★ [ROT-FIX] 菜单 VC 顶栏内容宽度(实现于 LauncherMenuViewController.m)。
+//   在 RootVC 侧用分类声明，免改头文件；运行时再 respondsToSelector: 保护。
+@interface LauncherMenuViewController (RotFixWidth)
+- (CGFloat)preferredTopBarWidth;
+@end
+
 @interface LauncherRootViewController ()
 
 @property(nonatomic, strong) UIView *sidebarContainer;
@@ -62,7 +81,26 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
 @property(nonatomic, strong) NSLayoutConstraint *sidebarWidthConstraint;
 // ★ [TOP-BAR] 顶栏那组约束(侧栏横条:贴顶/高56/右端停在右栏之前)
 @property(nonatomic, strong) NSArray<NSLayoutConstraint *> *ameTopBarConstraints;
+// ★ [ROT-FIX] 顶栏宽度:由我们【显式持有】一条 999 优先级宽度约束(只在【横屏】集里激活)。
+//   旧实现横屏只有 trailing ≤ 上限，宽度靠菜单的 self 指向的 hug + 750 按钮宽去解，
+//   转屏后无人重算 ⇒ 会落到偏小的解而被 masksToBounds 裁掉一截。
+@property(nonatomic, strong) NSLayoutConstraint *ameTopBarWidthConstraint;
 @property(nonatomic, strong) NSLayoutConstraint *rightPanelWidthConstraint;
+
+// ★ [PORTRAIT-FIX] 竖屏/横屏两套约束(互斥激活,与 LauncherCardLayoutViewController 同思路):
+//   横屏 = 原有三栏形态(保持原样,零回归);竖屏 = 顶栏贴安全区 + 内容满宽 + 右栏收成底部卡。
+@property(nonatomic, strong) NSArray<NSLayoutConstraint *> *ameLandscapeConstraints;
+@property(nonatomic, strong) NSArray<NSLayoutConstraint *> *amePortraitConstraints;
+@property(nonatomic, assign) BOOL ameUsingPortraitLayout;   // 当前是否竖屏那套
+@property(nonatomic, assign) BOOL ameLayoutModeApplied;     // 是否已经应用过一次(去重,防约束累积)
+// ★ [PORTRAIT-FIX] 安全区补偿要用的几条约束(常量按 insets 动态改)
+@property(nonatomic, strong) NSLayoutConstraint *amePortraitTopBarTop;
+@property(nonatomic, strong) NSLayoutConstraint *amePortraitTopBarLeading;
+@property(nonatomic, strong) NSLayoutConstraint *amePortraitTopBarTrailing;
+@property(nonatomic, strong) NSLayoutConstraint *amePortraitCardLeading;
+@property(nonatomic, strong) NSLayoutConstraint *amePortraitCardTrailing;
+@property(nonatomic, strong) NSLayoutConstraint *amePortraitCardBottom;
+@property(nonatomic, strong) NSLayoutConstraint *amePortraitCardPinHeight;
 // 关键修复（UI 累积异常）：setContentViewController: 之前每次切换都激活 4 个新约束
 // （leading/trailing/top/bottom 到 contentContainer），但旧 VC 的约束未显式 deactivate。
 // 在 tmpRootVC 保留场景下，缓存复用的子 VC 反复激活约束，layout 解算时 leading/trailing
@@ -71,6 +109,16 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
 
 @property(nonatomic, assign) BOOL isShowingProfileEditor;
 @property(nonatomic, strong) ProfileSettingsViewController *profileEditorVC;
+
+// ★ [PORTRAIT-FIX] 竖屏/横屏形态切换与安全区补偿(定义在文件下方,此处前置声明)
+- (BOOL)ameIsPortraitNow;
+- (void)applyRootLayoutForCurrentOrientation;
+- (void)applyRootSafeAreaInsets;
+// ★ [ROT-FIX] 顶栏宽度重算 + 转屏自证
+@property(nonatomic, assign) CGSize ameLastRotLoggedSize;
+- (void)ameRefreshTopBarWidthForSize:(CGSize)size;
+- (CGFloat)ameTopBarContentWidth;
+- (CGFloat)ameClampedTopBarWidthForSize:(CGSize)size;
 
 @end
 
@@ -183,23 +231,47 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     [super traitCollectionDidChange:previousTraitCollection];
-    // iPhone 与 iPad 切换、或分屏调整大小时，更新侧栏与右侧面板宽度
-    CGFloat sidebarWidth = LauncherRootLayoutSidebarWidth(self.traitCollection);
+    // iPhone 与 iPad 切换、或分屏调整大小时，更新右侧面板宽度
     CGFloat rightPanelWidth = LauncherRootLayoutRightPanelWidth(self.traitCollection);
-    if (self.sidebarWidthConstraint.constant != sidebarWidth) {
-        self.sidebarWidthConstraint.constant = sidebarWidth;
-    }
     if (self.rightPanelWidthConstraint.constant != rightPanelWidth) {
         self.rightPanelWidthConstraint.constant = rightPanelWidth;
     }
+    // ★ [ROT-FIX] 旧代码这里写 self.sidebarWidthConstraint.constant —— 但该约束在
+    //   setupContainers 里已被 active=NO(顶栏改用“内容宽”显式约束),写它等于没写
+    //   (“尺寸约束常数未真正重算”)。现改为重算显式顶栏宽度。
+    [self ameRefreshTopBarWidthForSize:self.view.bounds.size];
     // 通知子 VC 重新布局
     for (UIViewController *child in self.childViewControllers) {
         [child.view setNeedsLayout];
     }
+    // ★ [PORTRAIT-FIX] 尺寸类别变化(iPhone/iPad、分屏、转屏)⇒ 重选竖/横形态
+    [self applyRootLayoutForCurrentOrientation];
+}
+
+// ★ [PORTRAIT-FIX] 安全区变化(转屏时灵动岛换边、home indicator 进出)⇒ 重算顶栏/底部卡补偿。
+//   这是唯二可靠的时机:viewDidLayoutSubviews 里 safeAreaInsets 可能还没更新。
+- (void)viewSafeAreaInsetsDidChange {
+    [super viewSafeAreaInsetsDidChange];
+    [self applyRootLayoutForCurrentOrientation];
+    [self applyRootSafeAreaInsets];
 }
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    // ★ [PORTRAIT-FIX] 首帧/转屏后对齐竖横形态(幂等:内部只在换形态时动约束)
+    [self applyRootLayoutForCurrentOrientation];
+    // ★ [ROT-FIX] 顶栏宽度按当前 bounds 兜底重算(转屏后 bounds 已更新)。
+    //   旧实现从不在这里重算宽度,转屏后容器宽度只能靠 solver 猜 ⇒ “半截”。
+    [self ameRefreshTopBarWidthForSize:self.view.bounds.size];
+    // ★ [ROT-FIX] 布置后自证:尺寸变化(含转屏)才打一行，便于装机核对条宽
+    CGSize ameSize = self.view.bounds.size;
+    if (fabs(ameSize.width - self.ameLastRotLoggedSize.width) > 0.5 ||
+        fabs(ameSize.height - self.ameLastRotLoggedSize.height) > 0.5) {
+        self.ameLastRotLoggedSize = ameSize;
+        NSLog(@"[ROT] %@ size=%.0fx%.0f barW=%.0f",
+              (ameSize.width > ameSize.height) ? @"LANDSCAPE" : @"PORTRAIT",
+              ameSize.width, ameSize.height, self.ameTopBarWidthConstraint.constant);
+    }
     // 修复：移除原先对 nav 栈所有 VC 一刀切注入负 additionalSafeAreaInsets.top 的逻辑。
     // 该负 inset 会导致两个严重问题：
     //   1. 设置页等使用 safeAreaLayoutGuide.topAnchor 布局的 VC，其内容被推到导航栏之上（"飞到顶上"），
@@ -229,6 +301,54 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
             contentVC.additionalSafeAreaInsets = UIEdgeInsetsZero;
         }
     }
+}
+
+#pragma mark - ★ [ROT-FIX] 顶栏宽度 + 转屏适配
+
+/// 菜单子 VC 声明的“顶栏内容宽度”(visible 按钮总宽 + 间距); 拿不到则用兜底值。
+- (CGFloat)ameTopBarContentWidth {
+    LauncherMenuViewController *menu = (LauncherMenuViewController *)self.sidebarViewController;
+    if ([menu respondsToSelector:@selector(preferredTopBarWidth)]) {
+        CGFloat w = [menu preferredTopBarWidth];
+        if (w > 1.0) return w;
+    }
+    return kAmeTopBarFallbackWidth;
+}
+
+/// 把内容宽夹到“屏宽 - 右栏宽”，避免顶栏压到右上角头像(对应 required 的 ≤ 上限)。
+- (CGFloat)ameClampedTopBarWidthForSize:(CGSize)size {
+    CGFloat contentW = [self ameTopBarContentWidth];
+    CGFloat rightPanelW = LauncherRootLayoutRightPanelWidth(self.traitCollection);
+    CGFloat available = size.width - rightPanelW;
+    if (available < 1.0) return contentW;
+    return MIN(contentW, available);
+}
+
+/// 按给定尺寸重算顶栏宽度约束常数。仅在值真变时写回 ⇒ 不会在 viewDidLayoutSubviews 里反复触发布局。
+- (void)ameRefreshTopBarWidthForSize:(CGSize)size {
+    if (!self.ameTopBarWidthConstraint) return;
+    CGFloat want = [self ameClampedTopBarWidthForSize:size];
+    if (fabs(self.ameTopBarWidthConstraint.constant - want) < 0.5) return;
+    self.ameTopBarWidthConstraint.constant = want;
+}
+
+/// ★ [ROT-FIX] 转屏入口:按【目标 size】先重算顶栏宽度,再让菜单重放紧凑横排
+/// ⇒ 尺寸常数不停留在转屏前的旧值(修“旋转后只剩半截”)。
+/// 注意:这里【不】主动 activate 某一套约束集 —— 竖/横两套互斥由
+/// applyRootLayoutForCurrentOrientation(见 ★ [PORTRAIT-FIX])统一管理,
+/// 此处再激活一套只会与它打架(两套同时激活会短暂产生 required 冲突)。
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    [self ameRefreshTopBarWidthForSize:size];
+    for (UIViewController *child in self.childViewControllers) {
+        if ([child respondsToSelector:@selector(setCompactHorizontalLayout:)]) {
+            [child performSelector:@selector(setCompactHorizontalLayout:) withObject:@(YES)];
+        }
+    }
+    [self.view setNeedsLayout];
+    NSLog(@"[ROT] %@ size=%.0fx%.0f barW=%.0f",
+          (size.width > size.height) ? @"LANDSCAPE" : @"PORTRAIT",
+          size.width, size.height, self.ameTopBarWidthConstraint.constant);
 }
 
 #pragma mark - Setup
@@ -272,31 +392,155 @@ static CGFloat LauncherRootLayoutRightPanelWidth(UITraitCollection *trait) {
     // ★ [TOP-BAR] ≤:工具条贴合自身内容,可早于右栏结束
     NSLayoutConstraint *ameTopBarTrail   = [self.sidebarContainer.trailingAnchor constraintLessThanOrEqualToAnchor:self.rightPanelContainer.leadingAnchor];
     NSLayoutConstraint *ameTopBarHeight  = [self.sidebarContainer.heightAnchor constraintEqualToConstant:56.0];
+    // ★ [ROT-FIX] 显式顶栏宽度,优先级 999(< trailing ≤ 的 required) ⇒ 极窄屏时让 ≤ 上限赢，
+    //   不会报 "Unable to simultaneously satisfy constraints"。仅加入【横屏】约束集。
+    self.ameTopBarWidthConstraint = [self.sidebarContainer.widthAnchor constraintEqualToConstant:kAmeTopBarFallbackWidth];
+    self.ameTopBarWidthConstraint.priority = UILayoutPriorityRequired - 1;
     self.ameTopBarConstraints = @[ameTopBarLeading, ameTopBarTop, ameTopBarTrail, ameTopBarHeight];
 
-    [NSLayoutConstraint activateConstraints:@[
-        // 顶部横条(原左侧边栏)
+    NSLayoutConstraint *ameLspRightPanelTrailing = [self.rightPanelContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor];
+    NSLayoutConstraint *ameLspRightPanelTop      = [self.rightPanelContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor];
+    NSLayoutConstraint *ameLspRightPanelBottom   = [self.rightPanelContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor];
+    NSLayoutConstraint *ameLspContentLeading     = [self.contentContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor];
+    NSLayoutConstraint *ameLspContentTrailing    = [self.contentContainer.trailingAnchor constraintEqualToAnchor:self.rightPanelContainer.leadingAnchor];
+    NSLayoutConstraint *ameLspContentTop         = [self.contentContainer.topAnchor constraintEqualToAnchor:self.sidebarContainer.bottomAnchor];
+    NSLayoutConstraint *ameLspContentBottom      = [self.contentContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor];
+
+    // ===== 横屏约束集(与改动前逐条一致 ⇒ 横屏零回归) =====
+    self.ameLandscapeConstraints = @[
         ameTopBarLeading, ameTopBarTop, ameTopBarTrail, ameTopBarHeight,
-
-        // 右侧面板(用户头像):保持通高、贴右上
-        [self.rightPanelContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.rightPanelContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [self.rightPanelContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        self.ameTopBarWidthConstraint,   // ★ [ROT-FIX] 横屏顶栏宽度由我们显式给定(不再只靠 hug)
+        ameLspRightPanelTrailing, ameLspRightPanelTop, ameLspRightPanelBottom,
         self.rightPanelWidthConstraint,
+        ameLspContentLeading, ameLspContentTrailing, ameLspContentTop, ameLspContentBottom
+    ];
 
-        // 中间内容区:占满左侧(含原工具栏竖带),top 从顶栏下沿开始
-        [self.contentContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.contentContainer.trailingAnchor constraintEqualToAnchor:self.rightPanelContainer.leadingAnchor],
-        [self.contentContainer.topAnchor constraintEqualToAnchor:self.sidebarContainer.bottomAnchor],
-        [self.contentContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
-    ]];
+    // ===== ★ [PORTRAIT-FIX] 竖屏约束集 =====
+    //   用户原话:「你根本没写竖屏的 ui 啊?」—— 旧代码只有上面那套横屏形态:
+    //     ① 顶栏 top 钉在 view.top ⇒ 竖屏整条被灵动岛/刘海压住;
+    //     ② 右栏(168pt)通高占右侧 ⇒ iPhone 竖屏(≈390pt 宽)内容区只剩 ≈222pt,新闻网格被挤成一条缝;
+    //     ③ 顶部/底部都没吃安全区。
+    //   竖屏形态:顶栏 = 贴安全区顶部的浮动横条(四角圆角);内容 = 吃满其下全部宽度;
+    //             右栏(头像/启动) = 收成底部一张卡,底部避开 home indicator。
+    self.amePortraitTopBarLeading  = [self.sidebarContainer.leadingAnchor  constraintEqualToAnchor:self.view.leadingAnchor  constant:kPortraitOuterMargin];
+    self.amePortraitTopBarTop      = [self.sidebarContainer.topAnchor      constraintEqualToAnchor:self.view.topAnchor      constant:kPortraitOuterMargin];
+    self.amePortraitTopBarTrailing = [self.sidebarContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kPortraitOuterMargin];
+    NSLayoutConstraint *ptTopBarHeight = [self.sidebarContainer.heightAnchor constraintEqualToConstant:kPortraitTopBarHeight];
+
+    self.amePortraitCardLeading  = [self.rightPanelContainer.leadingAnchor  constraintEqualToAnchor:self.view.leadingAnchor  constant:kPortraitOuterMargin];
+    self.amePortraitCardTrailing = [self.rightPanelContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kPortraitOuterMargin];
+    self.amePortraitCardBottom   = [self.rightPanelContainer.bottomAnchor   constraintEqualToAnchor:self.view.bottomAnchor   constant:-kPortraitOuterMargin];
+    NSLayoutConstraint *ptCardMinHeight = [self.rightPanelContainer.heightAnchor constraintGreaterThanOrEqualToConstant:kPortraitRightPanelMinH];
+    // 「钉高」约束与 min 并存,优先级 = Low(250) ⇒ 右栏内部那一串 required 约束(头像/进度/启动按钮,
+    // 实测约需 340pt)高于 300 时自动让位,右栏按内部最小高自适应,且布局唯一不解算歧义;
+    // 内部能压到 300 时则取 300。用 required 写死高度会在小屏/大字号下产生 required 冲突。
+    self.amePortraitCardPinHeight = [self.rightPanelContainer.heightAnchor constraintEqualToConstant:kPortraitRightPanelMinH];
+    self.amePortraitCardPinHeight.priority = UILayoutPriorityDefaultLow;
+
+    NSLayoutConstraint *ptContentLeading  = [self.contentContainer.leadingAnchor  constraintEqualToAnchor:self.view.leadingAnchor];
+    NSLayoutConstraint *ptContentTrailing = [self.contentContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor];
+    NSLayoutConstraint *ptContentTop      = [self.contentContainer.topAnchor      constraintEqualToAnchor:self.sidebarContainer.bottomAnchor constant:kPortraitGap];
+    NSLayoutConstraint *ptContentBottom   = [self.contentContainer.bottomAnchor   constraintEqualToAnchor:self.rightPanelContainer.topAnchor constant:-kPortraitGap];
+
+    self.amePortraitConstraints = @[
+        self.amePortraitTopBarLeading, self.amePortraitTopBarTop, self.amePortraitTopBarTrailing, ptTopBarHeight,
+        self.amePortraitCardLeading, self.amePortraitCardTrailing, self.amePortraitCardBottom,
+        ptCardMinHeight, self.amePortraitCardPinHeight,
+        ptContentLeading, ptContentTrailing, ptContentTop, ptContentBottom
+    ];
+
+    // ★ [PORTRAIT-FIX] 圆角改用 continuous 曲线(更贴近设计稿;两套形态通用)
+    if (@available(iOS 13.0, *)) {
+        self.sidebarContainer.layer.cornerCurve = kCACornerCurveContinuous;
+        self.rightPanelContainer.layer.cornerCurve = kCACornerCurveContinuous;
+    }
 
     // ★ [TOP-BAR] 横条形态下菜单要横排(否则竖着一列图标会被 56pt 裁掉)
+    // ★ [PORTRAIT-FIX] 竖屏同样是横排顶栏 ⇒ 两种形态都横排。
     for (UIViewController *child in self.childViewControllers) {
         if ([child respondsToSelector:@selector(setCompactHorizontalLayout:)]) {
             [child performSelector:@selector(setCompactHorizontalLayout:) withObject:@(YES)];
         }
     }
+
+    // ★ [PORTRAIT-FIX] 立即按当前方向激活一套(不等 viewDidLayoutSubviews,避免首帧用错形态)
+    [self applyRootLayoutForCurrentOrientation];
+}
+
+#pragma mark - ★ [PORTRAIT-FIX] 竖屏 / 横屏形态切换
+
+/// 当前是否竖屏(以 view 实际尺寸判定,比 traitCollection 更可靠:
+/// 本工程 UIKit+hook 会把 idiom 强制成 Pad,竖直 sizeClass 也不一定准)。
+- (BOOL)ameIsPortraitNow {
+    CGSize s = self.view.bounds.size;
+    return (s.width > 0 && s.height > 0 && s.height > s.width);
+}
+
+/// 竖屏/横屏两套约束互斥激活 + 圆角形态切换。幂等:只在真正换形态时动约束(防约束累积)。
+- (void)applyRootLayoutForCurrentOrientation {
+    CGSize s = self.view.bounds.size;
+    if (s.width <= 0 || s.height <= 0) return;      // 首帧尺寸还没定,等 viewDidLayoutSubviews
+    if (!self.ameLandscapeConstraints || !self.amePortraitConstraints) return;  // setupContainers 还没跑
+    BOOL portrait = [self ameIsPortraitNow];
+    if (self.ameLayoutModeApplied && self.ameUsingPortraitLayout == portrait) return;
+    self.ameUsingPortraitLayout = portrait;
+    self.ameLayoutModeApplied = YES;
+
+    if (portrait) {
+        // ★ [PORTRAIT-FIX] 竖屏:顶栏/底部卡都是"浮动卡片" ⇒ 四角圆角;右栏不再通高。
+        self.sidebarContainer.layer.cornerRadius = kPortraitTopBarCorner;
+        self.sidebarContainer.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner |
+                                                    kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
+        self.rightPanelContainer.layer.cornerRadius = kPortraitCardCorner;
+        self.rightPanelContainer.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner |
+                                                       kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
+        [NSLayoutConstraint deactivateConstraints:self.ameLandscapeConstraints];
+        [NSLayoutConstraint activateConstraints:self.amePortraitConstraints];
+    } else {
+        // 横屏:维持原形态(顶栏只圆左侧两角、右栏通高只圆右侧两角)
+        self.sidebarContainer.layer.cornerRadius = 16.0;
+        self.sidebarContainer.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
+        self.rightPanelContainer.layer.cornerRadius = 16.0;
+        self.rightPanelContainer.layer.maskedCorners = kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
+        [NSLayoutConstraint deactivateConstraints:self.amePortraitConstraints];
+        [NSLayoutConstraint activateConstraints:self.ameLandscapeConstraints];
+    }
+
+    // 菜单顶栏两向都横排(横屏也是横条)
+    for (UIViewController *child in self.childViewControllers) {
+        if ([child respondsToSelector:@selector(setCompactHorizontalLayout:)]) {
+            [child performSelector:@selector(setCompactHorizontalLayout:) withObject:@(YES)];
+        }
+    }
+
+    [self applyRootSafeAreaInsets];
+    [self.view setNeedsLayout];
+
+    // ★ [PORTRAIT-FIX] 自证日志(一行):装机后 `log stream --predicate 'eventMessage CONTAINS "[PORTRAIT-FIX]"'` 核对。
+    NSLog(@"[PORTRAIT-FIX][ROOT] layout=%@ size=%.0fx%.0f safe(top=%.0f bottom=%.0f left=%.0f right=%.0f) topBarH=%.0f cardPinH=%.0f",
+          portrait ? @"PORTRAIT" : @"LANDSCAPE",
+          s.width, s.height,
+          self.view.safeAreaInsets.top, self.view.safeAreaInsets.bottom,
+          self.view.safeAreaInsets.left, self.view.safeAreaInsets.right,
+          self.sidebarContainer.bounds.size.height, kPortraitRightPanelMinH);
+}
+
+/// ★ [PORTRAIT-FIX] 安全区补偿:只改竖屏那套约束的常量(竖屏才激活 ⇒ 横屏不受影响)。
+- (void)applyRootSafeAreaInsets {
+    if (!self.amePortraitTopBarTop || !self.amePortraitCardBottom) return;
+    UIEdgeInsets safe = UIEdgeInsetsZero;
+    if (@available(iOS 11.0, *)) {
+        safe = self.view.safeAreaInsets;
+    }
+    // 顶栏:避开灵动岛/刘海(safe.top) + 屏边留白
+    self.amePortraitTopBarTop.constant      =  kPortraitOuterMargin + safe.top;
+    // 底部卡:避开 home indicator(safe.bottom) + 屏边留白
+    self.amePortraitCardBottom.constant     = -(kPortraitOuterMargin + safe.bottom);
+    // 左右安全区(竖屏恒 0,横屏分屏/某些设备非 0 时也一并吃进)
+    self.amePortraitTopBarLeading.constant  =  kPortraitOuterMargin + safe.left;
+    self.amePortraitTopBarTrailing.constant = -(kPortraitOuterMargin + safe.right);
+    self.amePortraitCardLeading.constant    =  kPortraitOuterMargin + safe.left;
+    self.amePortraitCardTrailing.constant   = -(kPortraitOuterMargin + safe.right);
 }
 
 - (void)setupChildViewControllers {

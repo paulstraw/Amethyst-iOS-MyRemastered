@@ -28,6 +28,17 @@ NSString * const kShortcutActionModpack    = @"modpack";
 NSString * const kShortcutActionBackground = @"background";
 NSString * const kShortcutActionVersions   = @"versions";
 
+// MARK: - ★ [BENTO] 便当盒布局常量
+// 主页磁贴从“一排等宽卡片”改成大小不一的便当盒拼贴。所有几何参数集中在这里。
+static const CGFloat   kBentoGap        = 10.0;   // 格子之间的间距(横竖一致)
+static const CGFloat   kBentoEdgeH      = 15.0;   // section 左右内边距(每个 item 再各留 gap/2 ⇒ 视觉边距 20)
+static const CGFloat   kBentoEdgeV      = 6.0;    // section 上下内边距
+static const CGFloat   kBentoSmallMin   = 84.0;   // 小格可见高度下限
+static const CGFloat   kBentoSmallMax   = 124.0;  // 小格可见高度上限
+static const CGFloat   kBentoMinRowH    = 96.0;   // 单格 section 的最小行高
+static const CGFloat   kBentoWideWidth  = 820.0;  // 可用宽度 ≥ 此值 ⇒ 3 列,否则 2 列
+static const NSInteger kBentoMaxSmalls  = 3;      // 一个 section 最多容纳的小格数
+
 // MARK: - Color Helpers
 
 static UIColor *colorFromHex(NSString *hex) {
@@ -802,34 +813,45 @@ static NSString *festivalGreeting(void) {
 // MARK: - Build Display Sections
 
 - (void)rebuildDisplaySections {
-    NSMutableArray *sections = [NSMutableArray array];
-    NSMutableArray *currentCompactGroup = nil;
-    
+    // ★ [BENTO] 便当盒分组:每个 section = 1 个大格(feature) + 最多 kBentoMaxSmalls 个小格。
+    //   规则:当前磁贴作为本 section 的大格;紧随其后的 Compact 磁贴并入同 section 当小格,
+    //   直到遇到下一个 Full 磁贴(它要留给下一节当大格)或小格数到达上限。
+    //   本方法只决定“磁贴如何拼贴进 section”,不改变磁贴数据源本身
+    //   (配置数组、顺序、可见性、点击/染色/背景透明逻辑全部保持原样)。
+    NSMutableArray<HomeTileConfig *> *visible = [NSMutableArray array];
     for (HomeTileConfig *tile in self.allTileConfigs) {
-        if (!tile.visible) continue;
-        
-        if (tile.tileSize == HomeTileSizeCompact) {
-            if (!currentCompactGroup) {
-                currentCompactGroup = [NSMutableArray array];
+        if (tile.visible) [visible addObject:tile];
+    }
+
+    NSMutableArray<NSArray<HomeTileConfig *> *> *sections = [NSMutableArray array];
+    NSUInteger i = 0;
+    while (i < visible.count) {
+        NSMutableArray<HomeTileConfig *> *group = [NSMutableArray arrayWithObject:visible[i]];
+        NSUInteger j = i + 1;
+        while (j < visible.count && group.count < (NSUInteger)(1 + kBentoMaxSmalls)) {
+            HomeTileConfig *next = visible[j];
+            if (next.tileSize == HomeTileSizeFull) break;   // Full 留给下一节做大格
+            [group addObject:next];
+            j++;
+        }
+        [sections addObject:[group copy]];
+        i = j;
+    }
+
+    // ★ [BENTO] 收尾:末尾若是落单的一个小格,且上一节还没满,就并进上一节,避免出现孤格。
+    if (sections.count >= 2) {
+        NSArray<HomeTileConfig *> *last = sections.lastObject;
+        if (last.count == 1 && last.firstObject.tileSize == HomeTileSizeCompact) {
+            NSMutableArray<HomeTileConfig *> *prev = [sections[sections.count - 2] mutableCopy];
+            if (prev.count < (NSUInteger)(1 + kBentoMaxSmalls)) {
+                [prev addObjectsFromArray:last];
+                [sections removeLastObject];
+                [sections replaceObjectAtIndex:sections.count - 1 withObject:[prev copy]];
             }
-            [currentCompactGroup addObject:tile];
-            if (currentCompactGroup.count >= 2) {
-                [sections addObject:[currentCompactGroup copy]];
-                currentCompactGroup = nil;
-            }
-        } else {
-            if (currentCompactGroup.count > 0) {
-                [sections addObject:[currentCompactGroup copy]];
-                currentCompactGroup = nil;
-            }
-            [sections addObject:@[tile]];
         }
     }
-    if (currentCompactGroup.count > 0) {
-        [sections addObject:[currentCompactGroup copy]];
-    }
-    
-    self.displaySections = sections;
+
+    self.displaySections = [sections copy];
 }
 
 // MARK: - Header Setup
@@ -917,66 +939,146 @@ static NSString *festivalGreeting(void) {
     }
 }
 
+// MARK: - ★ [BENTO] 便当盒布局
+
+/// ★ [BENTO] 造一个 item:宽度用分数(相对所在 group),高度用绝对值。
+- (NSCollectionLayoutItem *)bentoItemWithWidthFraction:(CGFloat)widthFraction
+                                                height:(CGFloat)height
+                                                insets:(NSDirectionalEdgeInsets)insets {
+    NSCollectionLayoutSize *size = [NSCollectionLayoutSize
+        sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:widthFraction]
+        heightDimension:[NSCollectionLayoutDimension absoluteDimension:height]];
+    NSCollectionLayoutItem *item = [NSCollectionLayoutItem itemWithLayoutSize:size];
+    item.contentInsets = insets;
+    return item;
+}
+
+/// ★ [BENTO] 统一的小格可见高度:取该组小格的原设计高度,夹在 [kBentoSmallMin, kBentoSmallMax]。
+- (CGFloat)bentoSmallHeightForTiles:(NSArray<HomeTileConfig *> *)tiles {
+    CGFloat h = 0;
+    for (HomeTileConfig *t in tiles) {
+        if (t.tileSize == HomeTileSizeFull) continue;   // 大格不参与小格基准高度
+        h = MAX(h, [self heightForTileConfig:t]);
+    }
+    if (h <= 0) h = 100.0;
+    return MIN(MAX(h, kBentoSmallMin), kBentoSmallMax);
+}
+
+/// ★ [BENTO] 给 group 套上统一的 section 内边距。
+- (NSCollectionLayoutSection *)bentoSectionWithGroup:(NSCollectionLayoutGroup *)group {
+    NSCollectionLayoutSection *section = [NSCollectionLayoutSection sectionWithGroup:group];
+    section.contentInsets = NSDirectionalEdgeInsetsMake(kBentoEdgeV, kBentoEdgeH, kBentoEdgeV, kBentoEdgeH);
+    return section;
+}
+
+/// ★ [BENTO] 单格 section(该 section 只有一个磁贴):整行大格。
+- (NSCollectionLayoutSection *)bentoSectionForSingleTile:(HomeTileConfig *)tile {
+    CGFloat h = MAX([self heightForTileConfig:tile], kBentoMinRowH);
+    NSDirectionalEdgeInsets insets = NSDirectionalEdgeInsetsMake(0, kBentoGap / 2.0, 0, kBentoGap / 2.0);
+    NSCollectionLayoutItem *item = [self bentoItemWithWidthFraction:1.0 height:h insets:insets];
+    NSCollectionLayoutSize *groupSize = [NSCollectionLayoutSize
+        sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:1.0]
+        heightDimension:[NSCollectionLayoutDimension absoluteDimension:h]];
+    NSCollectionLayoutGroup *group = [NSCollectionLayoutGroup horizontalGroupWithLayoutSize:groupSize subitems:@[item]];
+    return [self bentoSectionWithGroup:group];
+}
+
+/// ★ [BENTO] 便当盒 section 几何:
+///   rows[0]  = 大格(双倍高,宽屏时横跨 2/3 列)[+ 宽屏时右侧竖排 1~2 个小格]
+///   rows[1+] = 小格,每行 cols 个(最后一行不满行时也按 1/rowCount 均分铺满,不留空洞)
+///   item 的展开顺序必须与 displaySections[section] 的元素顺序一致,否则 index path 会错位。
+- (NSCollectionLayoutSection *)bentoSectionForTiles:(NSArray<HomeTileConfig *> *)tiles cols:(NSInteger)cols {
+    if (tiles.count <= 1) {
+        return [self bentoSectionForSingleTile:tiles.firstObject];
+    }
+
+    CGFloat gap = kBentoGap;
+    CGFloat halfGap = gap / 2.0;
+    NSDirectionalEdgeInsets hInsets = NSDirectionalEdgeInsetsMake(0, halfGap, 0, halfGap);
+
+    HomeTileConfig *feature = tiles.firstObject;
+    NSArray<HomeTileConfig *> *smalls = [tiles subarrayWithRange:NSMakeRange(1, tiles.count - 1)];
+    if (smalls.count == 0) return [self bentoSectionForSingleTile:feature];
+
+    CGFloat smallH   = [self bentoSmallHeightForTiles:smalls];
+    CGFloat featureH = MAX([self heightForTileConfig:feature], 2.0 * smallH + gap);   // 大格 = 双倍高
+
+    // ★ [BENTO] 宽屏(3 列)且小格数不是 3 的整数倍时,把前 1~2 个小格竖排到大格右侧,
+    //   形成 “大格(跨 2 列) + 侧栏小格” 的拼贴;其余小格在下方按列成行。
+    NSArray<HomeTileConfig *> *sideSmalls = @[];
+    NSArray<HomeTileConfig *> *gridSmalls = smalls;
+    CGFloat featureFraction = 1.0;
+    if (cols >= 3 && (smalls.count % 3) != 0) {
+        NSInteger n = MIN((NSInteger)smalls.count, 2);
+        sideSmalls = [smalls subarrayWithRange:NSMakeRange(0, (NSUInteger)n)];
+        gridSmalls = [smalls subarrayWithRange:NSMakeRange((NSUInteger)n, smalls.count - (NSUInteger)n)];
+        featureFraction = 2.0 / 3.0;
+    }
+
+    // ---- row0:大格 [+ 右侧竖排小格] ----
+    NSMutableArray<NSCollectionLayoutItem *> *row0Items = [NSMutableArray array];
+    [row0Items addObject:[self bentoItemWithWidthFraction:featureFraction height:featureH insets:hInsets]];
+    if (sideSmalls.count > 0) {
+        CGFloat unitH = (featureH - gap * (CGFloat)(sideSmalls.count - 1)) / (CGFloat)sideSmalls.count;
+        NSMutableArray<NSCollectionLayoutItem *> *stackItems = [NSMutableArray array];
+        for (NSUInteger k = 0; k < sideSmalls.count; k++) {
+            [stackItems addObject:[self bentoItemWithWidthFraction:1.0 height:unitH insets:hInsets]];
+        }
+        NSCollectionLayoutSize *stackSize = [NSCollectionLayoutSize
+            sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:(1.0 - featureFraction)]
+            heightDimension:[NSCollectionLayoutDimension absoluteDimension:featureH]];
+        NSCollectionLayoutGroup *stack = [NSCollectionLayoutGroup verticalGroupWithLayoutSize:stackSize subitems:stackItems];
+        stack.interItemSpacing = [NSCollectionLayoutSpacing fixedSpacing:gap];
+        [row0Items addObject:stack];
+    }
+    NSCollectionLayoutSize *row0Size = [NSCollectionLayoutSize
+        sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:1.0]
+        heightDimension:[NSCollectionLayoutDimension absoluteDimension:featureH]];
+    NSCollectionLayoutGroup *row0 = [NSCollectionLayoutGroup horizontalGroupWithLayoutSize:row0Size subitems:row0Items];
+
+    // ---- row1..n:小格行 ----
+    NSMutableArray<NSCollectionLayoutGroup *> *rows = [NSMutableArray arrayWithObject:row0];
+    CGFloat totalH = featureH;
+    for (NSInteger i = 0; i < (NSInteger)gridSmalls.count; i += cols) {
+        NSInteger rowCount = MIN(cols, (NSInteger)gridSmalls.count - i);
+        CGFloat w = 1.0 / (CGFloat)rowCount;
+        NSMutableArray<NSCollectionLayoutItem *> *items = [NSMutableArray arrayWithCapacity:(NSUInteger)rowCount];
+        for (NSInteger j = 0; j < rowCount; j++) {
+            [items addObject:[self bentoItemWithWidthFraction:w height:smallH insets:hInsets]];
+        }
+        NSCollectionLayoutSize *rowSize = [NSCollectionLayoutSize
+            sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:1.0]
+            heightDimension:[NSCollectionLayoutDimension absoluteDimension:smallH]];
+        [rows addObject:[NSCollectionLayoutGroup horizontalGroupWithLayoutSize:rowSize subitems:items]];
+        totalH += gap + smallH;
+    }
+
+    NSCollectionLayoutSize *outerSize = [NSCollectionLayoutSize
+        sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:1.0]
+        heightDimension:[NSCollectionLayoutDimension absoluteDimension:totalH]];
+    NSCollectionLayoutGroup *outer = [NSCollectionLayoutGroup verticalGroupWithLayoutSize:outerSize subitems:rows];
+    outer.interItemSpacing = [NSCollectionLayoutSpacing fixedSpacing:gap];
+    return [self bentoSectionWithGroup:outer];
+}
+
+/// ★ [BENTO] section provider:列数由可用宽度决定(窄屏 2 列 / 宽屏 3 列),
+/// 每个多格 section 内至少产出两种 item 尺寸(大格 vs 小格)。
 - (UICollectionViewLayout *)createLayout {
     __weak typeof(self) weakSelf = self;
-    
+
     return [[UICollectionViewCompositionalLayout alloc] initWithSectionProvider:^NSCollectionLayoutSection * _Nullable(NSInteger sectionIndex, id<NSCollectionLayoutEnvironment> env) {
-        
-        if (sectionIndex >= weakSelf.displaySections.count) return nil;
-        
-        NSArray *sectionTiles = weakSelf.displaySections[sectionIndex];
-        HomeTileConfig *firstTile = sectionTiles.firstObject;
-        BOOL isCompact = (firstTile.tileSize == HomeTileSizeCompact);
-        CGFloat height = [weakSelf heightForTileConfig:firstTile];
-        
-        // ★ [设计稿对齐] 网格列数随可用宽度变化:竖屏 2 列、横屏(宽) 3 列。
-        //   原实现把宽度写死 0.5(恒 2 列),在 iPad/横屏下显得很空。
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return nil;
+        if (sectionIndex >= (NSInteger)strongSelf.displaySections.count) return nil;
+
+        NSArray<HomeTileConfig *> *tiles = strongSelf.displaySections[sectionIndex];
+        if (tiles.count == 0) return nil;
+
+        // ★ [BENTO] 列数随可用宽度变化:宽屏 3 列、窄屏 2 列(竖屏/横屏都成立)。
         CGFloat availW = env.container.effectiveContentSize.width;
-        NSInteger cols = (availW >= 820.0) ? 3 : 2;      // 820pt 约为 iPhone 横屏/ iPad 竖屏量级
-        if (cols > (NSInteger)sectionTiles.count) { cols = MAX((NSInteger)1, (NSInteger)sectionTiles.count); }
-        CGFloat itemFrac = 1.0 / (CGFloat)cols;
+        NSInteger cols = (availW >= kBentoWideWidth) ? 3 : 2;
 
-        if (isCompact && sectionTiles.count >= 2) {
-            // 多列紧凑布局(列数随宽度)
-            NSCollectionLayoutSize *itemSize = [NSCollectionLayoutSize
-                sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:itemFrac]
-                heightDimension:[NSCollectionLayoutDimension fractionalHeightDimension:1.0]];
-            NSCollectionLayoutItem *item = [NSCollectionLayoutItem itemWithLayoutSize:itemSize];
-            item.contentInsets = NSDirectionalEdgeInsetsMake(0, 5, 0, 5);
-            
-            NSCollectionLayoutSize *groupSize = [NSCollectionLayoutSize
-                sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:1.0]
-                heightDimension:[NSCollectionLayoutDimension absoluteDimension:height]];
-            // ★ 一行放 cols 个(原实现 subitems:@[item] 恒 1 个 ⇒ 永远只有 1 列)。
-            //   用 subitems 数组而非 iOS 16+ 的 repeatingSubitem:count:,以保持部署目标 14.0 兼容。
-            NSMutableArray<NSCollectionLayoutItem *> *subitems = [NSMutableArray arrayWithCapacity:(NSUInteger)cols];
-            for (NSInteger i = 0; i < cols; i++) { [subitems addObject:item]; }
-            NSCollectionLayoutGroup *group = [NSCollectionLayoutGroup horizontalGroupWithLayoutSize:groupSize
-                                                                                           subitems:subitems];
-
-            NSCollectionLayoutSection *section = [NSCollectionLayoutSection sectionWithGroup:group];
-            section.contentInsets = NSDirectionalEdgeInsetsMake(5, 15, 5, 15);
-            section.interGroupSpacing = 10;
-            return section;
-            
-        } else {
-            // 全宽 / 单个紧凑磁贴
-            CGFloat wFrac = isCompact ? 0.5 : 1.0;
-            NSCollectionLayoutSize *itemSize = [NSCollectionLayoutSize
-                sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:wFrac]
-                heightDimension:[NSCollectionLayoutDimension fractionalHeightDimension:1.0]];
-            NSCollectionLayoutItem *item = [NSCollectionLayoutItem itemWithLayoutSize:itemSize];
-            item.contentInsets = NSDirectionalEdgeInsetsMake(0, 5, 0, 5);
-            
-            NSCollectionLayoutSize *groupSize = [NSCollectionLayoutSize
-                sizeWithWidthDimension:[NSCollectionLayoutDimension fractionalWidthDimension:1.0]
-                heightDimension:[NSCollectionLayoutDimension absoluteDimension:height]];
-            NSCollectionLayoutGroup *group = [NSCollectionLayoutGroup horizontalGroupWithLayoutSize:groupSize subitems:@[item]];
-            
-            NSCollectionLayoutSection *section = [NSCollectionLayoutSection sectionWithGroup:group];
-            section.contentInsets = NSDirectionalEdgeInsetsMake(5, 15, 5, 15);
-            return section;
-        }
+        return [strongSelf bentoSectionForTiles:tiles cols:cols];
     }];
 }
 
@@ -1531,7 +1633,10 @@ static NSString *festivalGreeting(void) {
 }
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
-    return UIInterfaceOrientationMaskLandscape;
+    // ★ [PORTRAIT-UNLOCK] 放开竖屏:原来是写死 Landscape ⇒ iPhone 上竖屏进不来
+    //   (主页是该 VC,它锁横屏 ⇒ 整个 App 被钉在横屏)。游戏页仍单独锁横屏。
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) { return UIInterfaceOrientationMaskAll; }
+    return UIInterfaceOrientationMaskAllButUpsideDown;
 }
 
 /// 重新应用背景效果：当 BackgroundUIEffectChanged 通知到达时调用，

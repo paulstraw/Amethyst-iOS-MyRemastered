@@ -96,6 +96,9 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
 // ★ [TOP-BAR] 顶栏"贴合内容":松开栈的右边钉、给菜单视图一个"等于栈宽"的约束
 @property(nonatomic, strong) NSLayoutConstraint *ameStackTrailingConstraint;
 @property(nonatomic, strong) NSLayoutConstraint *ameHugWidthConstraint;
+// ★ [ROT-FIX] 顶栏内容宽度 / 转屏自证日志
+@property(nonatomic, assign) CGSize ameLastRotLoggedSize;
+- (CGFloat)preferredTopBarWidth;
 // ★ [E2] 当前是否竖屏(底部标签栏)。NO = 横屏(左侧栏)。
 @property(nonatomic, assign) BOOL compactLayout;
 @property(nonatomic, assign) BOOL hasPendingCompact;
@@ -221,6 +224,25 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
           self.view.bounds.size.width);
 }
 
+/// ★ [ROT-FIX] 顶栏内容宽度:紧凑形态 = visible 按钮 × 56 + (visible-1) × 8。
+/// RootVC 用它显式设定顶栏容器宽度 ⇒ 宽度确定，不再被 solver 解成“半截”。
+/// (56/8 必须与 applyE2LayoutForCompact: 里的紧凑常量一致)
+- (CGFloat)preferredTopBarWidth {
+    if (!self.compactLayout || !self.menuStackView) return 0.0;
+    NSUInteger visible = 0;
+    for (UIButton *b in self.menuButtons) { if (!b.hidden) visible++; }
+    if (visible == 0) return 0.0;
+    return (CGFloat)visible * 56.0 + (CGFloat)(visible - 1) * 8.0;
+}
+
+/// ★ [ROT-FIX] 转屏时按当前 compactLayout 重放一次紧凑排布:
+/// 旧实现 applyE2LayoutForCompact: 仅 viewDidLoad 跑过一次 ⇒ 转屏后
+/// hug / 按钮尺寸 / 可见性状态不再被断言，顶栏会停留或退化成旧宽度。
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    [self applyE2LayoutForCompact:self.compactLayout];
+}
+
 #pragma mark - Lifecycle
 
 - (void)viewDidLoad {
@@ -278,11 +300,28 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
     [super viewDidLayoutSubviews];
     // 品牌 logo 渐变背景要跟随 logo 视图尺寸(E-land 行 13:27×27 圆角 8;此处按侧栏窄宽度缩到 22)
     self.brandLogoGradient.frame = self.brandLogoGradient.superlayer.bounds;
+    // ★ [ROT-FIX] 顶栏形态自愈:顶栏容器很矮(≈56)时菜单必须是【横排】，
+    //   竖排塞进 56pt 只会露出约一个按钮(用户实测“旋转后顶部工具条只剩下半截”)。
+    //   若朝向/父布局把 compactLayout 弄成 NO，这里强制纠正回横排并重放尺寸。
+    BOOL ameTopBarForm = (self.view.bounds.size.height > 0.0 && self.view.bounds.size.height < 80.0);
+    if (ameTopBarForm && !self.compactLayout) {
+        [self applyE2LayoutForCompact:YES];
+    }
     // ★ [TOP-BAR-FIX] 兜底:每次布局都按 compactLayout 重新断言一次轴向,防止被别处覆盖
     if (self.menuStackView) {
-        UILayoutConstraintAxis want = self.compactLayout ? UILayoutConstraintAxisHorizontal
-                                                         : UILayoutConstraintAxisVertical;
+        UILayoutConstraintAxis want = (self.compactLayout || ameTopBarForm) ? UILayoutConstraintAxisHorizontal
+                                                                           : UILayoutConstraintAxisVertical;
         if (self.menuStackView.axis != want) { self.menuStackView.axis = want; }
+    }
+    // ★ [ROT-FIX] 布置后自证:尺寸变化(含转屏)才打一行，便于装机核对条宽。
+    //   menu 视图宽 == 顶栏容器宽(compact 下 RootVC/菜单两处约束一致)。
+    CGSize ameSize = self.view.bounds.size;
+    if (fabs(ameSize.width - self.ameLastRotLoggedSize.width) > 0.5 ||
+        fabs(ameSize.height - self.ameLastRotLoggedSize.height) > 0.5) {
+        self.ameLastRotLoggedSize = ameSize;
+        NSLog(@"[ROT] %@ size=%.0fx%.0f barW=%.0f",
+              self.compactLayout ? @"TOPBAR-H" : @"TOPBAR-V",
+              ameSize.width, ameSize.height, ameSize.width);
     }
 }
 
