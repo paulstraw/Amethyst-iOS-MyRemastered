@@ -465,7 +465,7 @@ dep_mg:
 	# 额外显式构建 SPIRV / glslang-default-resource-limits 两个静态库：
 	# dep_shader_shims 从源码链接 libshaderc_impl.dylib 时需要它们，
 	# 而 mobileglues 自身只链接 glslang::glslang，不会带出这两个目标。
-	cmake --build $(WORKINGDIR)/mobileglues --config RelWithDebInfo -j$(JOBS) --target mobileglues SPIRV glslang-default-resource-limits:iOS 下 glslang/SPIRV 走 libraries/ios 的预编译 .a,没有 SPIRV 这个 target
+	cmake --build $(WORKINGDIR)/mobileglues --config RelWithDebInfo -j$(JOBS) --target mobileglues SPIRV glslang-default-resource-limits
 	@mg_bindir=$(WORKINGDIR)/mobileglues/3rdparty/glslang; \
 	mg_spirv_a=$$mg_bindir/SPIRV/libSPIRV.a; \
 	[ -f "$$mg_spirv_a" ] || mg_spirv_a=$(SOURCEDIR)/Natives/external/MobileGlues/MobileGlues-cpp/libraries/ios/libSPIRV.a; \
