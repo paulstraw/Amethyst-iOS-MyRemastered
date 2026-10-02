@@ -82,6 +82,45 @@ jobs:
           GIT_LFS_SKIP_SMUDGE: "1"
         run: git submodule update --init --recursive
 
+      # ==== [speed] 依赖缓存(由 yiyeshi0-hash 添加,提速 CI;与 ui/e-design-1 同款)====
+      # 关掉构建并发(-j1)后单次编译更慢,重依赖(MobileGlues/glslang/SPIRV-Cross/LTW/SFPEW)
+      # 与 JRE/游戏资源的下载+解包成为主要耗时 ⇒ 这里做三件事:缓存重依赖构建产物、
+      # 缓存 JRE/资源下载、每次打印缓存命中证据(cache-proof)。
+      - name: Cache heavy 3rd-party builds (MobileGlues / glslang / SPIRV-Cross / LTW / SFPEW)
+        uses: actions/cache@v4
+        with:
+          path: |
+            Natives/build/mobileglues
+            Natives/build/mobileglues/3rdparty
+            Natives/build/sfpew
+            Natives/external/LTW/ltw/src/main/tinywrapper
+          key: dep3rd-${{ runner.os }}-xcodeauto-${{ hashFiles('Makefile') }}
+          restore-keys: |
+            dep3rd-${{ runner.os }}-
+
+      - name: Cache JRE and game assets downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            Natives/build/java_runtimes
+            Natives/build/assets
+            ~/Library/Caches/Amethyst
+          key: jre-assets-${{ runner.os }}-xcodeauto-${{ hashFiles('Makefile') }}
+          restore-keys: |
+            jre-assets-${{ runner.os }}-
+
+      - name: Cache evidence
+        run: |
+          echo "==== cache state ===="
+          for d in Natives/build/mobileglues Natives/build/sfpew Natives/build/java_runtimes Natives/build/assets; do
+            if [ -d "$d" ]; then
+              echo "HIT  $d : $(find "$d" -type f 2>/dev/null | wc -l) files, $(du -sh "$d" 2>/dev/null | cut -f1)"
+            else
+              echo "MISS $d (absent)"
+            fi
+          done
+          echo "====================="
+
       # 注意：不要在 `if:` 条件里引用 secrets / vars。
       # GitHub Actions 的表达式求值器在编译 workflow 时处理这些 context，
       # vars 在仓库尚未创建任何 variable 时求值也会失败，导致整个 workflow
