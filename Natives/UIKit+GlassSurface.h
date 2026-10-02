@@ -181,7 +181,7 @@ static inline void AmeAttachGlassRim(UIView *host, CGFloat radius) {
 
     // 玻璃描边:深浅色都给亮边(SPEC §2.1 深 .28 / 浅 .85)
     UIColor *rim = AmeGlassRimColor();   // 原:深 0.22 / 浅 0.75 → 新:深 0.28 / 浅 0.85
-    rim = [rim colorWithAlphaComponent:rim.alpha * ameStrength];   // ★ [RIM-UI] 按强度缩放
+    rim = [rim colorWithAlphaComponent:CGColorGetAlpha(rim.CGColor) * ameStrength];   // ★ [RIM-UI] 按强度缩放
     host.layer.borderWidth = AmeGlassBorderWidth;   // 原:1.0/screen.scale(≈0.33pt) → 新:1.0pt(SPEC 1px)
     host.layer.borderColor = rim.CGColor;
 
@@ -197,7 +197,7 @@ static inline void AmeAttachGlassRim(UIView *host, CGFloat radius) {
     shine.backgroundColor = [UIColor clearColor];
     CAGradientLayer *g = [CAGradientLayer layer];
     UIColor *ameTopHl = AmeGlassInnerHighlightColor();
-    ameTopHl = [ameTopHl colorWithAlphaComponent:ameTopHl.alpha * ameStrength];  // ★ [RIM-UI]
+    ameTopHl = [ameTopHl colorWithAlphaComponent:CGColorGetAlpha(ameTopHl.CGColor) * ameStrength];  // ★ [RIM-UI]
     g.colors = @[(id)ameTopHl.CGColor,      // 顶 .45(SPEC)
                  (id)[UIColor clearColor].CGColor,
                  (id)[UIColor colorWithWhite:1.0 alpha:0.10 * ameStrength].CGColor]; // 底 .10(SPEC)
