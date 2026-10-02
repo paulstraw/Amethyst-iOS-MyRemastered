@@ -131,7 +131,7 @@ METHOD_DIRCHECK   = \
 # TODO: Change Info.plist for visionOS 1.0
 METHOD_CHANGE_PLAT = \
 	if [ '$(1)' != '11' ] && [ '$(1)' != '12' ]; then \
-		vtool -arch arm64 -set-build-version $(1) 14.0 16.0 -replace -output $(2) $(2); \
+		vtool -arch arm64 -set-build-version $(1) 14.0 26.2 -replace -output $(2) $(2); \
 		ldid -S -M $(2); \
 	else \
 		vtool -arch arm64 -set-build-version $(1) 1.0 1.0 -replace -output $(2) $(2); \
