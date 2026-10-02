@@ -465,14 +465,14 @@ dep_mg:
 	# 额外显式构建 SPIRV / glslang-default-resource-limits 两个静态库：
 	# dep_shader_shims 从源码链接 libshaderc_impl.dylib 时需要它们，
 	# 而 mobileglues 自身只链接 glslang::glslang，不会带出这两个目标。
-	cmake --build $(WORKINGDIR)/mobileglues --config RelWithDebInfo -j$(JOBS) --target mobileglues SPIRV glslang-default-resource-limits
+	cmake --build $(WORKINGDIR)/mobileglues --config RelWithDebInfo -j$(JOBS) --target mobileglues   # ★ 只编主 target:iOS 下 glslang/SPIRV 走 libraries/ios 的预编译 .a,没有 SPIRV 这个 target
 	@mg_bindir=$(WORKINGDIR)/mobileglues/3rdparty/glslang; \
 	mg_spirv_a=$$mg_bindir/SPIRV/libSPIRV.a; \
-	[ -f "$$mg_spirv_a" ] || mg_spirv_a=$$(find $(WORKINGDIR)/mobileglues -type f -name libSPIRV.a -print -quit 2>/dev/null); \
+	[ -f "$$mg_spirv_a" ] || mg_spirv_a=$(SOURCEDIR)/Natives/external/MobileGlues/MobileGlues-cpp/libraries/ios/libSPIRV.a; \
 	mg_glslang_a=$$mg_bindir/glslang/libglslang.a; \
-	[ -f "$$mg_glslang_a" ] || mg_glslang_a=$$(find $(WORKINGDIR)/mobileglues -type f -name libglslang.a -print -quit 2>/dev/null); \
+	[ -f "$$mg_glslang_a" ] || mg_glslang_a=$(SOURCEDIR)/Natives/external/MobileGlues/MobileGlues-cpp/libraries/ios/libglslang.a; \
 	mg_rl_a=$$mg_bindir/glslang/libglslang-default-resource-limits.a; \
-	[ -f "$$mg_rl_a" ] || mg_rl_a=$$(find $(WORKINGDIR)/mobileglues -type f -name libglslang-default-resource-limits.a -print -quit 2>/dev/null); \
+	[ -f "$$mg_rl_a" ] || mg_rl_a=$(SOURCEDIR)/Natives/external/MobileGlues/MobileGlues-cpp/libraries/ios/libglslang-default-resource-limits.a; \
 	if [ -z "$$mg_spirv_a" ] || [ ! -f "$$mg_spirv_a" ] || [ -z "$$mg_glslang_a" ] || [ ! -f "$$mg_glslang_a" ] || [ -z "$$mg_rl_a" ] || [ ! -f "$$mg_rl_a" ]; then \
 		echo "ERROR: glslang static libs unresolved (spirv=$$mg_spirv_a glslang=$$mg_glslang_a rl=$$mg_rl_a)"; \
 		find $(WORKINGDIR)/mobileglues -type f -name "lib*.a" 2>/dev/null | head -20; \
@@ -521,11 +521,11 @@ dep_shaderc_impl: dep_mg
 	# swizzle 选择器 constArray（+0xd8）而 SIGSEGV —— 正是 MC 26.3 崩溃家族的成因。
 	mg_bindir=$(WORKINGDIR)/mobileglues/3rdparty/glslang; \
 	mg_spirv_a=$$mg_bindir/SPIRV/libSPIRV.a; \
-	[ -f "$$mg_spirv_a" ] || mg_spirv_a=$$(find $(WORKINGDIR)/mobileglues -type f -name libSPIRV.a -print -quit 2>/dev/null); \
+	[ -f "$$mg_spirv_a" ] || mg_spirv_a=$(SOURCEDIR)/Natives/external/MobileGlues/MobileGlues-cpp/libraries/ios/libSPIRV.a; \
 	mg_glslang_a=$$mg_bindir/glslang/libglslang.a; \
-	[ -f "$$mg_glslang_a" ] || mg_glslang_a=$$(find $(WORKINGDIR)/mobileglues -type f -name libglslang.a -print -quit 2>/dev/null); \
+	[ -f "$$mg_glslang_a" ] || mg_glslang_a=$(SOURCEDIR)/Natives/external/MobileGlues/MobileGlues-cpp/libraries/ios/libglslang.a; \
 	mg_rl_a=$$mg_bindir/glslang/libglslang-default-resource-limits.a; \
-	[ -f "$$mg_rl_a" ] || mg_rl_a=$$(find $(WORKINGDIR)/mobileglues -type f -name libglslang-default-resource-limits.a -print -quit 2>/dev/null); \
+	[ -f "$$mg_rl_a" ] || mg_rl_a=$(SOURCEDIR)/Natives/external/MobileGlues/MobileGlues-cpp/libraries/ios/libglslang-default-resource-limits.a; \
 	if [ -z "$$mg_spirv_a" ] || [ ! -f "$$mg_spirv_a" ] || [ -z "$$mg_glslang_a" ] || [ ! -f "$$mg_glslang_a" ] || [ -z "$$mg_rl_a" ] || [ ! -f "$$mg_rl_a" ]; then \
 		echo "ERROR: glslang static libs unresolved - from-source shaderc impl cannot link"; \
 		exit 1; \
