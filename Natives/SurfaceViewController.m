@@ -1975,8 +1975,29 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 // them to SDL again and recurses until the main thread's stack overflows.
 static BOOL forwardingPressesToSDL = NO;
 
+// Keys can reach us twice (TrackedTextField forwards Space explicitly, and
+// UIKit may also pass it along). Drop repeated downs/ups for the same key.
+static NSMutableSet<NSNumber *> *ame_downKeyCodes(void) {
+    static NSMutableSet *set;
+    if (!set) set = [NSMutableSet set];
+    return set;
+}
+
+static NSSet<UIPress *> *ame_dedupePresses(NSSet<UIPress *> *presses, BOOL down) {
+    return [presses objectsPassingTest:^BOOL(UIPress *press, BOOL *stop) {
+        if (press.key == nil) return YES;
+        NSNumber *code = @(press.key.keyCode);
+        BOOL isDown = [ame_downKeyCodes() containsObject:code];
+        if (down == isDown) return NO;
+        if (down) [ame_downKeyCodes() addObject:code]; else [ame_downKeyCodes() removeObject:code];
+        return YES;
+    }];
+}
+
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
     if (forwardingPressesToSDL) return;
+    presses = ame_dedupePresses(presses, YES);
+    if (presses.count == 0) return;
     for (UIPress *press in presses) {
         if (press.key != nil) {
             [KeyboardInput sendKeyEvent:press.key down:YES];
@@ -1996,6 +2017,8 @@ static BOOL forwardingPressesToSDL = NO;
 
 - (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
     if (forwardingPressesToSDL) return;
+    presses = ame_dedupePresses(presses, NO);
+    if (presses.count == 0) return;
     for (UIPress *press in presses) {
         if (press.key != nil) {
             [KeyboardInput sendKeyEvent:press.key down:NO];
@@ -2036,6 +2059,11 @@ static BOOL forwardingPressesToSDL = NO;
 // Keep focus off the game UI entirely (text input uses first responder, not focus).
 - (BOOL)shouldUpdateFocusInContext:(UIFocusUpdateContext *)context {
     return NO;
+}
+
+// Treat cancelled presses as releases so the dedupe set never holds a stuck key.
+- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    [self pressesEnded:presses withEvent:event];
 }
 
 - (BOOL)prefersPointerLocked {
