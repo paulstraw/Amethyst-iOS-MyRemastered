@@ -12,6 +12,8 @@
 @property(nonatomic, strong) UIView *sidebarView;
 @property(nonatomic, strong) UIStackView *menuStackView;
 @property(nonatomic, strong) NSArray<NSDictionary *> *menuItems;
+// ★ [UI-C] 菜单图标自愈定时器(CoreUI 冷启首调用竞态 ⇒ 主界面图标可能拿到 nil)
+@property(nonatomic, strong) NSTimer *menuIconSelfHealTimer;
 @property(nonatomic, assign) NSInteger selectedIndex;
 // ★ [UI-A] 菜单条上下内边距约束(竖屏横排时收紧,给 50pt 按钮留居中余量)
 @property(nonatomic, strong) NSLayoutConstraint *stackTopInsetConstraint;
