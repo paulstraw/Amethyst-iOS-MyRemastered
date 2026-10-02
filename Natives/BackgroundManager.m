@@ -15,6 +15,8 @@ static NSString * const kBackgroundPathKey = @"background_path";
 static NSString * const kBackgroundUIEffectKey = @"background_ui_effect";
 static NSString * const kBackgroundUIOpacityKey = @"background_ui_opacity";
 static NSString * const kBackgroundBlurIntensityKey = @"background_blur_intensity";
+static NSString * const kGlassRimEnabledKey  = @"background_glass_rim_enabled";   // ★ [RIM-UI]
+static NSString * const kGlassRimStrengthKey = @"background_glass_rim_strength";  // ★ [RIM-UI]
 static NSString * const kBackgroundsFolder = @"backgrounds";
 static const NSInteger kGlobalBackgroundTag = 99999;
 static const NSInteger kBackgroundImageTag = 99998;
@@ -294,8 +296,17 @@ static const NSInteger kDefaultBackgroundTag = 99995;
         [defaults synchronize];
         NSLog(@"[glass] migrated uiEffect: Translucent -> Blur (一次性,可在设置里改回)");
     }
+    // ★ [RIM-UI] 高光开关 / 强度(默认:开、1.0)
+    id ameRimObj  = [defaults objectForKey:kGlassRimEnabledKey];
+    _glassRimEnabled  = ameRimObj ? [defaults boolForKey:kGlassRimEnabledKey] : YES;
+    id ameRimSObj = [defaults objectForKey:kGlassRimStrengthKey];
+    _glassRimStrength = ameRimSObj ? [defaults floatForKey:kGlassRimStrengthKey] : 1.0;
+    if (_glassRimStrength < 0.0 || _glassRimStrength > 1.0) _glassRimStrength = 1.0;
+    AmeSetGlassRimStrength(_glassRimEnabled ? _glassRimStrength : 0.0);
+
     NSLog(@"[glass] settings loaded: uiEffect=%ld (0=半透明,1=毛玻璃) blurIntensity=%.2f uiOpacity=%.2f",
           (long)_uiEffect, _blurIntensity, _uiOpacity);
+    NSLog(@"[glass] rim: enabled=%d strength=%.2f", (int)self.glassRimEnabled, self.glassRimStrength);
 }
 
 - (void)saveUISettings {
@@ -303,6 +314,8 @@ static const NSInteger kDefaultBackgroundTag = 99995;
     [defaults setInteger:self.uiEffect forKey:kBackgroundUIEffectKey];
     [defaults setFloat:self.uiOpacity forKey:kBackgroundUIOpacityKey];
     [defaults setFloat:self.blurIntensity forKey:kBackgroundBlurIntensityKey];
+    [defaults setBool:self.glassRimEnabled forKey:kGlassRimEnabledKey];      // ★ [RIM-UI]
+    [defaults setFloat:self.glassRimStrength forKey:kGlassRimStrengthKey];   // ★ [RIM-UI]
     [defaults synchronize];
 }
 
@@ -672,9 +685,8 @@ static const NSInteger kDefaultBackgroundTag = 99995;
             // ★ [E3] SPEC §2:玻璃底 + blur 26 / saturate 180%
             blurView.contentView.backgroundColor = AmeGlassFillColor();
             AmeTuneGlassBackdrop(blurView, AmeGlassBlurRadius, AmeGlassSaturate);
-            // ★ 玻璃质感(与面板一致)
-            AmeAttachGlassRim(cell.contentView, cell.contentView.layer.cornerRadius);
-            AmeAttachGlassRim(cell, cell.layer.cornerRadius);
+            // ★ [NO-RIM] 列表行不再刷高光(用户反馈:设置页 / 实例子目录不要这个描边)
+            //   主界面卡片的 rim 仍在 applyEffectToView: 里保留。
             blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
             // Remove old background views
@@ -684,6 +696,12 @@ static const NSInteger kDefaultBackgroundTag = 99995;
                 }
             }
 
+            // ★ [ROUND-ROW] 选项行改圆角(设置页/实例子目录的选项)
+            CGFloat rowRadius = 12.0;
+            blurView.layer.cornerRadius = rowRadius;
+            blurView.layer.masksToBounds = YES;
+            cell.layer.cornerRadius = rowRadius;
+            cell.layer.masksToBounds = YES;
             cell.backgroundView = blurView;
         } else {
             cell.backgroundColor = [UIColor colorWithWhite:0.1 alpha:self.uiOpacity];
@@ -699,6 +717,9 @@ static const NSInteger kDefaultBackgroundTag = 99995;
         }
         cell.contentView.backgroundColor = [UIColor clearColor];
         cell.backgroundView = nil;
+        // ★ [ROUND-ROW] 半透明模式下行也圆角(与毛玻璃模式一致)
+        cell.layer.cornerRadius = 12.0;
+        cell.layer.masksToBounds = YES;
     }
 }
 
@@ -952,6 +973,9 @@ static const NSInteger kDefaultBackgroundTag = 99995;
         blurView.contentView.backgroundColor = AmeGlassFillColor();
         AmeTuneGlassBackdrop(blurView, AmeGlassBlurRadius, AmeGlassSaturate);
         // ★ 玻璃质感:高光描边 + 上缘内高光(不依赖 iOS 26 SDK)
+        // ★ [RIM-UI] 按用户开关/强度刷高光;先摘旧图层,再按新强度重刷
+        AmeSetGlassRimStrength(self.glassRimEnabled ? self.glassRimStrength : 0.0);
+        AmeDetachGlassRim(view);
         AmeAttachGlassRim(view, view.layer.cornerRadius);
         // ★ [UI-B] 修复(2026-10-02):AmeRefreshGlassRim 全工程原本 0 个调用者
         //   ⇒ 高光 CAGradientLayer 的 frame 恒为 (0,0,0,0) ⇒ 上缘高光从来没画出来过。

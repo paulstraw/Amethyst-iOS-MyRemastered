@@ -131,7 +131,9 @@
 - (void)setupSections {
     // Sections: [UI效果设置], [选择背景类型], [图片背景, 视频背景], [恢复默认背景, 清除背景]
     self.sections = @[
-        @[localize(@"i18n_str_57", nil), localize(@"i18n_str_1296", nil), localize(@"i18n_str_1297", nil)],
+        // ★ [RIM-UI] 末尾两行:高光描边开关 + 高光强度滑块
+        @[localize(@"i18n_str_57", nil), localize(@"i18n_str_1296", nil), localize(@"i18n_str_1297", nil),
+          @"高光描边", @"高光强度"],
         @[localize(@"i18n_str_60", nil)],
         @[localize(@"i18n_str_61", nil), localize(@"i18n_str_55", nil)],
         @[localize(@"i18n_str_62", nil), localize(@"i18n_str_63", nil)]
@@ -273,7 +275,56 @@
             cell.textLabel.text = nil;
             cell.imageView.image = [UIImage systemImageNamed:@"slider.horizontal.3"];
             
+                        return cell;
+        } else if (indexPath.row == 3) {
+            // ★ [RIM-UI] 高光描边开关
+            static NSString *rimSwitchId = @"RimSwitchCell";
+            UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:rimSwitchId];
+            if (!cell) {
+                cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:rimSwitchId];
+                cell.selectionStyle = UITableViewCellSelectionStyleNone;
+                UISwitch *sw = [[UISwitch alloc] init];
+                sw.tag = 400;
+                [sw addTarget:self action:@selector(glassRimSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+                cell.accessoryView = sw;
+                cell.imageView.image = [UIImage systemImageNamed:@"sparkles"];
+            }
+            [self styleCell:cell hasBackground:hasBackground];
+            cell.textLabel.text = @"高光描边";
+            UISwitch *sw = (UISwitch *)cell.accessoryView;
+            sw.on = manager.glassRimEnabled;
             return cell;
+        } else if (indexPath.row == 4) {
+            // ★ [RIM-UI] 高光强度滑块(0 = 完全不刷)
+            static NSString *rimSliderId = @"RimSliderCell";
+            UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:rimSliderId];
+            if (!cell) {
+                cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:rimSliderId];
+                cell.selectionStyle = UITableViewCellSelectionStyleNone;
+                UISlider *slider = [[UISlider alloc] initWithFrame:CGRectMake(16, 0, cell.bounds.size.width - 120, 30)];
+                slider.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+                slider.minimumValue = 0.0f;
+                slider.maximumValue = 1.0f;
+                slider.tag = 500;
+                [slider addTarget:self action:@selector(glassRimSliderChanged:) forControlEvents:UIControlEventValueChanged];
+                UILabel *valueLabel = [[UILabel alloc] initWithFrame:CGRectMake(cell.bounds.size.width - 80, 0, 60, 30)];
+                valueLabel.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+                valueLabel.textAlignment = NSTextAlignmentRight;
+                valueLabel.tag = 501;
+                valueLabel.font = [UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightRegular];
+                [cell.contentView addSubview:slider];
+                [cell.contentView addSubview:valueLabel];
+                cell.contentView.layoutMargins = UIEdgeInsetsMake(8, 16, 8, 16);
+                cell.imageView.image = [UIImage systemImageNamed:@"sparkle"];
+            }
+            [self styleCell:cell hasBackground:hasBackground];
+            UISlider *slider = [cell.contentView viewWithTag:500];
+            slider.value = manager.glassRimStrength;
+            slider.enabled = manager.glassRimEnabled;
+            UILabel *valueLabel = [cell.contentView viewWithTag:501];
+            valueLabel.text = [NSString stringWithFormat:@"%.0f%%", manager.glassRimStrength * 100];
+            valueLabel.textColor = hasBackground ? [UIColor whiteColor] : [UIColor labelColor];
+            cell.textLabel.text = nil;
         }
     }
     
@@ -353,6 +404,25 @@
     }
     
     // 实时刷新UI效果
+    [[BackgroundManager sharedManager] refreshUIEffect];
+}
+
+// ★ [RIM-UI] 高光描边开关
+- (void)glassRimSwitchChanged:(UISwitch *)sw {
+    [BackgroundManager sharedManager].glassRimEnabled = sw.on;
+    [[BackgroundManager sharedManager] refreshUIEffect];
+    [self.tableView reloadData];
+}
+
+// ★ [RIM-UI] 高光强度滑块
+- (void)glassRimSliderChanged:(UISlider *)slider {
+    CGFloat value = slider.value;
+    [BackgroundManager sharedManager].glassRimStrength = value;
+    UITableViewCell *cell = (UITableViewCell *)slider.superview.superview;
+    if ([cell isKindOfClass:[UITableViewCell class]]) {
+        UILabel *valueLabel = [cell.contentView viewWithTag:501];
+        valueLabel.text = [NSString stringWithFormat:@"%.0f%%", value * 100];
+    }
     [[BackgroundManager sharedManager] refreshUIEffect];
 }
 

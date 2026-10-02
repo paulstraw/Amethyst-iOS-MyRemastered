@@ -145,12 +145,29 @@ static inline void AmeApplyGlassShadow(UIView *host, CGFloat radius, BOOL strong
     }
 }
 
+/// ★ [RIM-UI] 高光强度(0…1;由 BackgroundManager 按用户设置写入,1.0 = SPEC 原值)。
+///   0 ⇒ 完全不刷(用户:"要不就别亮");>0 ⇒ 描边与内高光按比例缩放。
+static CGFloat gAmeGlassRimStrength = 1.0;
+static inline void AmeSetGlassRimStrength(CGFloat s) { gAmeGlassRimStrength = MAX(0.0, MIN(1.0, s)); }
+static inline CGFloat AmeGlassRimStrengthValue(void) { return gAmeGlassRimStrength; }
+
+/// 摘掉已存在的高光(改强度后要重刷,否则旧图层还挂着)
+static inline void AmeDetachGlassRim(UIView *host) {
+    if (host == nil) return;
+    static const NSInteger kAmeRimTag2 = 0x4D52494D;
+    for (UIView *sub in [host.subviews copy]) { if (sub.tag == kAmeRimTag2) [sub removeFromSuperview]; }
+    host.layer.borderWidth = 0;
+    host.layer.shadowOpacity = 0;
+}
+
 /// ★ 玻璃质感(不依赖 iOS 26 SDK):给载体加「1px 高光描边 + 上/下缘内高光 + 外阴影」。
 /// 为什么要它:真系统液态玻璃需要 iOS 26 SDK 构建(CI 现已换到 Xcode 26.3/iOS 26.2 SDK,
 /// 那时系统会自动接管;此外这里作叠层仍然成立)。旧 SDK 下它是主要观感来源。
 /// 幂等:用一个 tag 去重,重复调用不会叠加。
 static inline void AmeAttachGlassRim(UIView *host, CGFloat radius) {
     if (host == nil) return;
+    CGFloat ameStrength = AmeGlassRimStrengthValue();
+    if (ameStrength <= 0.001) { AmeDetachGlassRim(host); return; }   // ★ 强度 0 ⇒ 一条都不刷
     static const NSInteger kAmeRimTag = 0x4D52494D;   // 'MRIM'
     for (UIView *sub in host.subviews) {
         if (sub.tag == kAmeRimTag) { return; }        // 已加过 ⇒ 幂等
@@ -164,6 +181,7 @@ static inline void AmeAttachGlassRim(UIView *host, CGFloat radius) {
 
     // 玻璃描边:深浅色都给亮边(SPEC §2.1 深 .28 / 浅 .85)
     UIColor *rim = AmeGlassRimColor();   // 原:深 0.22 / 浅 0.75 → 新:深 0.28 / 浅 0.85
+    rim = [rim colorWithAlphaComponent:rim.alpha * ameStrength];   // ★ [RIM-UI] 按强度缩放
     host.layer.borderWidth = AmeGlassBorderWidth;   // 原:1.0/screen.scale(≈0.33pt) → 新:1.0pt(SPEC 1px)
     host.layer.borderColor = rim.CGColor;
 
@@ -178,9 +196,11 @@ static inline void AmeAttachGlassRim(UIView *host, CGFloat radius) {
     shine.translatesAutoresizingMaskIntoConstraints = NO;
     shine.backgroundColor = [UIColor clearColor];
     CAGradientLayer *g = [CAGradientLayer layer];
-    g.colors = @[(id)(AmeGlassInnerHighlightColor()).CGColor,      // 顶 .45(SPEC)
+    UIColor *ameTopHl = AmeGlassInnerHighlightColor();
+    ameTopHl = [ameTopHl colorWithAlphaComponent:ameTopHl.alpha * ameStrength];  // ★ [RIM-UI]
+    g.colors = @[(id)ameTopHl.CGColor,      // 顶 .45(SPEC)
                  (id)[UIColor clearColor].CGColor,
-                 (id)[UIColor colorWithWhite:1.0 alpha:0.10].CGColor]; // 底 .10(SPEC)
+                 (id)[UIColor colorWithWhite:1.0 alpha:0.10 * ameStrength].CGColor]; // 底 .10(SPEC)
     g.locations = @[@0.0, @0.50, @1.0];
     g.startPoint = CGPointMake(0.5, 0.0);
     g.endPoint   = CGPointMake(0.5, 1.0);
