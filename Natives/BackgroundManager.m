@@ -282,6 +282,20 @@ static const NSInteger kDefaultBackgroundTag = 99995;
     if (_blurIntensity < 0.0 || _blurIntensity > 1.0) {
         _blurIntensity = 0.7; // 默认模糊程度
     }
+
+    // ★ [GLASS-MIGRATE] 一次性迁移:老版本"键不存在 => 0 => 半透明"的 bug 会把第一次运行写成
+    //   "半透明",于是 applyEffectToView: 永远走 else 分支 ⇒ 用户现场"主界面绝对没有玻璃"。
+    //   这里只做【一次】:若当前是半透明且从未迁移过,改成毛玻璃并打标记(用户仍可在设置里改回)。
+    static NSString * const kGlassMigratedKey = @"background.glass_migrated_v1";
+    if (_uiEffect == BackgroundUIEffectTranslucent && ![defaults boolForKey:kGlassMigratedKey]) {
+        _uiEffect = BackgroundUIEffectBlur;
+        [defaults setInteger:_uiEffect forKey:kBackgroundUIEffectKey];
+        [defaults setBool:YES forKey:kGlassMigratedKey];
+        [defaults synchronize];
+        NSLog(@"[glass] migrated uiEffect: Translucent -> Blur (一次性,可在设置里改回)");
+    }
+    NSLog(@"[glass] settings loaded: uiEffect=%ld (0=半透明,1=毛玻璃) blurIntensity=%.2f uiOpacity=%.2f",
+          (long)_uiEffect, _blurIntensity, _uiOpacity);
 }
 
 - (void)saveUISettings {
@@ -892,6 +906,9 @@ static const NSInteger kDefaultBackgroundTag = 99995;
     if (!view) return;
 
     if (self.uiEffect == BackgroundUIEffectBlur) {
+        NSLog(@"[glass] applyEffectToView: BLUR path on %@ (blur=%.1f sat=%.2f intensity=%.2f hasBg=%d)",
+              NSStringFromClass(view.class), (double)AmeGlassBlurRadius, (double)AmeGlassSaturate,
+              (double)self.blurIntensity, (int)[self hasBackground]);
         // 毛玻璃效果 - 创建 UIVisualEffectView 作为子视图
         // 先移除已有的 blur view
         for (UIView *subview in view.subviews) {
@@ -943,6 +960,8 @@ static const NSInteger kDefaultBackgroundTag = 99995;
             [self ameRefreshRimsRecursive:view];
         });
     } else {
+        NSLog(@"[glass] applyEffectToView: TRANSLUCENT path on %@ (uiEffect=%ld)",
+              NSStringFromClass(view.class), (long)self.uiEffect);
         // 半透明效果 - 移除 blur view，使用半透明背景
         // 修复：使用 systemBackgroundColor 替代硬编码深灰，自适应浅色/深色模式
         for (UIView *subview in view.subviews) {

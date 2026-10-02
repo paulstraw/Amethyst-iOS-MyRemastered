@@ -638,21 +638,29 @@ static const void *kE1InstanceNameKey = &kE1InstanceNameKey;
     // ★ [E1] E 方案主区版式:
     //   横屏 = 左侧栏(菜单)+ 主区「实例」网格(稿中无右栏);
     //   竖屏 = 主区「实例」网格在上 + 底部菜单条(稿中的底部标签栏位)。
-    //   右栏因此退出布局(--> hidden + 不参与约束),启动入口下沉到实例卡上(SPEC §5 G8);
-    //   右栏 VC 仍作为子 VC 存活,启动仍复用它的既有链路(账号校验/JIT/下载拦截),零功能重写。
-    self.e1ShowsRightPanel = NO;
-    self.rightPanelCard.hidden = YES;
+    //   ★ [TOP-BAR] 按用户实测反馈改版:
+    //     ① 工具栏搬到【顶部横条】;② 右端停在右栏之前 ⇒ 不挡右上角的用户头像;
+    //     ③ 主页(内容卡)占掉原工具栏那条竖带(leading 直接贴屏边);④ 右栏(头像)常驻右上。
+    self.e1ShowsRightPanel = YES;
+    self.rightPanelCard.hidden = NO;
 
+    // ★ [TOP-BAR] 顶栏(原左栏改横条):贴顶,右端停在右栏之前 ⇒ 绝不压住右上角头像
     NSLayoutConstraint *sidebarLeading = [self.sidebarCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:outerMargin];
     NSLayoutConstraint *sidebarTop = [self.sidebarCard.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:outerMargin];
-    NSLayoutConstraint *sidebarBottom = [self.sidebarCard.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-outerMargin];
-    NSLayoutConstraint *contentTop = [self.contentCard.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:outerMargin];
+    NSLayoutConstraint *sidebarTrail = [self.sidebarCard.trailingAnchor constraintEqualToAnchor:self.rightPanelCard.leadingAnchor constant:-kCardSpacing];
+    NSLayoutConstraint *sidebarHeight = [self.sidebarCard.heightAnchor constraintEqualToConstant:56.0];
+    // 右栏(用户头像)常驻右上角
+    NSLayoutConstraint *rightTop = [self.rightPanelCard.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:outerMargin];
+    NSLayoutConstraint *rightTrail = [self.rightPanelCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-outerMargin];
+    NSLayoutConstraint *rightHeight = [self.rightPanelCard.heightAnchor constraintEqualToConstant:56.0];
+    // ★ 主页占掉原工具栏竖带:content.leading 贴屏边;top 从顶栏下沿开始
+    NSLayoutConstraint *contentLead = [self.contentCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:outerMargin];
+    NSLayoutConstraint *contentTop = [self.contentCard.topAnchor constraintEqualToAnchor:self.sidebarCard.bottomAnchor constant:kCardSpacing];
     NSLayoutConstraint *contentBottom = [self.contentCard.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-outerMargin];
-    // ★ [E1] 主区右边界:由"贴右栏左边"改为"贴屏边" —— 右栏退出布局后主区接管整块剩余宽度。
-    NSLayoutConstraint *contentTrail = [self.contentCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-outerMargin];
+    NSLayoutConstraint *contentTrail = [self.contentCard.trailingAnchor constraintEqualToAnchor:self.rightPanelCard.leadingAnchor constant:-kCardSpacing];
 
-    self.outerMarginConstraints = @[sidebarLeading, sidebarTop, sidebarBottom,
-                                    contentTrail, contentTop, contentBottom];
+    self.outerMarginConstraints = @[sidebarLeading, sidebarTop, rightTop, rightTrail,
+                                    contentLead, contentTrail, contentTop, contentBottom];
 
     // ★ [GLASS-SAFE] 记下"贴屏边"的 4 个,供安全区补偿使用
     self.edgeLeadingConstraint  = sidebarLeading;
@@ -666,37 +674,45 @@ static const void *kE1InstanceNameKey = &kE1InstanceNameKey;
     sidebarBottom.identifier = @"edge-bottom";
 
     // ★ [UI-A][PORTRAIT-FIX] 中栏与左栏的横向相邻约束:必须单独持有,否则切竖屏时无法 deactivate。
-    self.contentBetweenLeadConstraint  = [self.contentCard.leadingAnchor  constraintEqualToAnchor:self.sidebarCard.trailingAnchor constant:kCardSpacing];
-    // 保留 contentBetweenTrailConstraint 语义(主区右边界),指向同一条 contentTrail,便于统一切换
+    // ★ [TOP-BAR] 顶栏改横条后,主区不再挂在侧栏右边 —— 这两条改为"主区左边界"与"右栏左边界",
+    //   仍单独持有以便切竖屏时能 deactivate(约束泄漏是上一版竖屏错位的根因)。
+    self.contentBetweenLeadConstraint  = contentLead;
     self.contentBetweenTrailConstraint = contentTrail;
 
-    // 横屏约束集(E 横屏:左栏 + 主区实例网格)
-    self.landscapeConstraints = @[sidebarLeading, sidebarTop, sidebarBottom,
-                                  self.sidebarWidthConstraint,
-                                  self.contentBetweenLeadConstraint,
-                                  contentTrail, contentTop, contentBottom];
+    // 横屏约束集(E 横屏:顶栏 + 主区实例网格 + 右上头像)
+    self.landscapeConstraints = @[sidebarLeading, sidebarTop, sidebarTrail, sidebarHeight,
+                                  rightTop, rightTrail, rightHeight, self.rightPanelWidthConstraint,
+                                  contentLead, contentTrail, contentTop, contentBottom];
 
     [NSLayoutConstraint activateConstraints:self.landscapeConstraints];
 
     // ★ [E1] 竖屏约束集(E 竖屏:主区实例网格在上 + 底部菜单条)
-    NSLayoutConstraint *pContentTop   = [self.contentCard.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:kE1MarginPortrait];
-    // ★ [PORTRAIT-SAFE] 竖屏时岛在顶部 ⇒ 这条 top 约束要在 applyEdgeInsets 里额外加 insets.top
+    // ★ [TOP-BAR] 竖屏也是顶栏:菜单横条在左上、头像小卡在右上,内容填满下方。
+    NSLayoutConstraint *pSideTop      = [self.sidebarCard.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:kE1MarginPortrait];
+    NSLayoutConstraint *pSideLead     = [self.sidebarCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:kE1MarginPortrait];
+    NSLayoutConstraint *pSideTrail    = [self.sidebarCard.trailingAnchor constraintEqualToAnchor:self.rightPanelCard.leadingAnchor constant:-kCardSpacing];
+    NSLayoutConstraint *pSideHeight   = [self.sidebarCard.heightAnchor constraintEqualToConstant:56.0];
+    NSLayoutConstraint *pRightTop     = [self.rightPanelCard.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:kE1MarginPortrait];
+    NSLayoutConstraint *pRightTrail   = [self.rightPanelCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kE1MarginPortrait];
+    NSLayoutConstraint *pRightHeight  = [self.rightPanelCard.heightAnchor constraintEqualToConstant:56.0];
+    NSLayoutConstraint *pRightWidth   = [self.rightPanelCard.widthAnchor constraintEqualToConstant:56.0];
+    // ★ [PORTRAIT-SAFE] 顶栏在顶部 ⇒ 这几条要在 applyEdgeInsets 里加 insets.top(避开灵动岛)
+    NSLayoutConstraint *pContentTop   = [self.contentCard.topAnchor constraintEqualToAnchor:self.sidebarCard.bottomAnchor constant:kCardSpacing];
+    pSideTop.identifier    = @"portrait-top";
+    pRightTop.identifier   = @"portrait-top";
     pContentTop.identifier = @"portrait-top";
     NSLayoutConstraint *pContentLead  = [self.contentCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:kE1MarginPortrait];
     NSLayoutConstraint *pContentTrail = [self.contentCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kE1MarginPortrait];
-    NSLayoutConstraint *pSideLead     = [self.sidebarCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:kE1MarginPortrait];
-    NSLayoutConstraint *pSideTrail    = [self.sidebarCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-kE1MarginPortrait];
-    NSLayoutConstraint *pSideBottom   = [self.sidebarCard.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-kE1MarginPortrait];
-    NSLayoutConstraint *pSideTop      = [self.sidebarCard.topAnchor constraintEqualToAnchor:self.contentCard.bottomAnchor constant:kCardSpacing];
-    NSLayoutConstraint *pSideHeight   = [self.sidebarCard.heightAnchor constraintEqualToConstant:kPortraitMenuBarHeight];
+    NSLayoutConstraint *pSideBottom   = [NSLayoutConstraint constraintWithItem:self.sidebarCard attribute:NSLayoutAttributeNotAnAttribute relatedBy:NSLayoutRelationEqual toItem:nil attribute:NSLayoutAttributeNotAnAttribute multiplier:1 constant:0];
+    (void)pSideBottom;
     for (NSLayoutConstraint *c in @[pContentTop, pContentLead, pContentTrail,
-                                    pSideLead, pSideTrail, pSideBottom, pSideTop, pSideHeight]) {
+                                    pSideLead, pSideTrail, pSideTop, pSideHeight,
+                                    pRightTop, pRightTrail, pRightHeight, pRightWidth]) {
         c.identifier = @"portrait-set";
     }
-    // ★ [UI-A][PORTRAIT-SAFE] 底部菜单卡单独打标,竖屏要避开 home indicator(见 applyEdgeInsets)。
-    pSideBottom.identifier = @"portrait-bottom";
     self.portraitConstraints = @[pContentTop, pContentLead, pContentTrail,
-                                 pSideLead, pSideTrail, pSideBottom, pSideTop, pSideHeight];
+                                 pSideLead, pSideTrail, pSideTop, pSideHeight,
+                                 pRightTop, pRightTrail, pRightHeight, pRightWidth];
 }
 
 - (void)setupChildViewControllers {
