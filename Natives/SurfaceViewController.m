@@ -230,7 +230,7 @@ int memorystatus_control(uint32_t command, int32_t pid, uint32_t flags, void *bu
 static int currentHotbarSlot = -1;
 static GameSurfaceView* pojavWindow;
 
-@interface SurfaceViewController ()<UITextFieldDelegate, UIGestureRecognizerDelegate> {
+@interface SurfaceViewController ()<UITextFieldDelegate, UIGestureRecognizerDelegate, UIPointerInteractionDelegate> {
 }
 
 // FPS/内存监控相关（FPS 在 native pojavSwapBuffers 中计数，参照 FCL/ZL2）
@@ -297,6 +297,11 @@ static GameSurfaceView* pojavWindow;
 //        - 命中 → 返回对应控件，用户可拖动/点击
 //        - 未命中 → 返回 nil，触摸继续穿透到游戏画面
 @property(nonatomic, strong) UIView *launchOverlayView;
+// Hides the system pointer over the game while the mouse is grabbed. visionOS
+// does not honor prefersPointerLocked for iPad apps, so the pointer otherwise
+// stays visible and drifts independently of the camera.
+@property(nonatomic, strong) UIPointerInteraction *pointerHideInteraction;
+@property(nonatomic, assign) BOOL pointerHidden;
 @property(nonatomic, strong) CAGradientLayer *launchGradientLayer;
 @property(nonatomic, strong) UIActivityIndicatorView *launchSpinner;
 @property(nonatomic, strong) UILabel *launchTitleLabel;
@@ -1025,6 +1030,9 @@ static UIView *findSDL_uikitview(UIView *root);
 
     UIHoverGestureRecognizer *hoverGesture = [[NSClassFromString(@"UIHoverGestureRecognizer") alloc] initWithTarget:self action:@selector(surfaceOnHover:)];
     [self.touchView addGestureRecognizer:hoverGesture];
+
+    self.pointerHideInteraction = [[UIPointerInteraction alloc] initWithDelegate:self];
+    [self.touchView addInteraction:self.pointerHideInteraction];
 
     self.tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(surfaceOnClick:)];
     self.tapGesture.allowedTouchTypes = @[@(UITouchTypeDirect)];
@@ -1987,6 +1995,17 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     [super pressesEnded:presses withEvent:event];
 }
 
+- (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction styleForRegion:(UIPointerRegion *)region {
+    return isGrabbing ? [UIPointerStyle hiddenPointerStyle] : nil;
+}
+
+// With a hardware keyboard, the focus engine can land on the in-game menu
+// button; Space then activates that button instead of reaching Minecraft.
+// Keep focus off the game UI entirely (text input uses first responder, not focus).
+- (BOOL)shouldUpdateFocusInContext:(UIFocusUpdateContext *)context {
+    return NO;
+}
+
 - (BOOL)prefersPointerLocked {
     return GCMouse.mice.count > 0 && (isGrabbing || virtualMouseEnabled);
 }
@@ -1994,10 +2013,17 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
 - (void)registerMouseCallbacks:(GCMouse *)mouse {
     NSLog(@"Input: Got mouse %@", mouse);
     mouse.mouseInput.mouseMovedHandler = ^(GCMouseInput * _Nonnull mouse, float deltaX, float deltaY) {
-        // Always forward mouse movement to the game.
-        // When pointer is locked (in-game grabbing), deltaX/deltaY are true deltas.
-        // When pointer is NOT locked (menu, or Bluetooth mouse before lock activates),
-        // we still send the delta so the virtual mouse or cursor can move.
+        if (self.pointerHidden != isGrabbing) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.pointerHidden = isGrabbing;
+                [self.pointerHideInteraction invalidate];
+            });
+        }
+        // Outside the game (menus) the hover gesture already reports the system
+        // pointer's absolute position. Adding deltas on top makes the game cursor
+        // drift away from the system pointer, so only forward deltas while the
+        // mouse is grabbed or the virtual mouse is in use.
+        if (!isGrabbing && !virtualMouseEnabled) return;
         [self sendTouchPoint:CGPointMake(deltaX, -deltaY) withEvent:ACTION_MOVE_MOTION];
     };
 
