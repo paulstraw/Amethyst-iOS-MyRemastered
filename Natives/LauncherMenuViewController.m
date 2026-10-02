@@ -135,11 +135,10 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
     self.menuStackView.spacing      = compact ? 10.0 : kE2LandscapeSpacing;
     // ★ [TOP-BAR] 顶栏:松开栈的右边钉、并让菜单视图宽度=栈宽 ⇒ 整条工具条贴合内容
     if (compact) {
-        self.ameStackTrailingConstraint.active = NO;
-        if (!self.ameHugWidthConstraint) {
-            self.ameHugWidthConstraint = [self.view.widthAnchor constraintEqualToAnchor:self.menuStackView.widthAnchor];
-        }
-        self.ameHugWidthConstraint.active = YES;
+        // ★ [TOP-BAR-FIX] 回退"工具条贴合内容":那会把整条压成一个小方块(用户实测)。
+        //   保留:通条宽度 + 图标靠左紧挨(靠 Fill + 弹簧)。
+        self.ameHugWidthConstraint.active = NO;
+        self.ameStackTrailingConstraint.active = YES;
         if (NO) {
         if (!self.ameMenuSpacer) {
             UIView *sp = [[UIView alloc] init];
@@ -264,12 +263,22 @@ static const CGFloat kE2LandscapeSpacing = 4.0;
     self.selectedIndex = 0;
 
     [self setupSidebar];
+
+    // ★ [TOP-BAR-FIX] 顶栏形态是【横排】:这里强制应用一次,不再依赖外部调用
+    //   (301 行 setupSidebar 里硬编码过 axis=Vertical ⇒ 曾经把按钮排成一列)
+    [self applyE2LayoutForCompact:YES];
 }
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     // 品牌 logo 渐变背景要跟随 logo 视图尺寸(E-land 行 13:27×27 圆角 8;此处按侧栏窄宽度缩到 22)
     self.brandLogoGradient.frame = self.brandLogoGradient.superlayer.bounds;
+    // ★ [TOP-BAR-FIX] 兜底:每次布局都按 compactLayout 重新断言一次轴向,防止被别处覆盖
+    if (self.menuStackView) {
+        UILayoutConstraintAxis want = self.compactLayout ? UILayoutConstraintAxisHorizontal
+                                                         : UILayoutConstraintAxisVertical;
+        if (self.menuStackView.axis != want) { self.menuStackView.axis = want; }
+    }
 }
 
 #pragma mark - UI Setup
