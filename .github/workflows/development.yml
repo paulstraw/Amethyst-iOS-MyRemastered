@@ -107,15 +107,15 @@ jobs:
           echo "[ci] BUILD_MOBILEGL=${BUILD_MOBILEGL} vars=${{ vars.BUILD_MOBILEGL }} src=$(test -d Natives/external/MobileGL && echo yes || echo no)"
 
           if [ "${{ matrix.platform_name }}" == "ios" ]; then
-            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }}
+            gmake -j1 dsym package PLATFORM=${{ matrix.platform }}
 
-            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1
+            gmake -j1 dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1
 
           elif [ "${{ matrix.platform_name }}" == "tvos" ]; then
-            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1
+            gmake -j1 dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1
 
           else
-            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }}
+            gmake -j1 dsym package PLATFORM=${{ matrix.platform }}
           fi
 
       - name: Upload MobileGL dylib (if built)

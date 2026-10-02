@@ -769,7 +769,7 @@ jobs:
           clang -fsyntax-only -x objective-c @/tmp/tfc/flags.rsp "$f" >"$out" 2>&1 || echo "FAILED: $f"
           EOF
           chmod +x /tmp/tfc/one.sh
-          JOBS=$(sysctl -n hw.ncpu)
+          JOBS=1
           FAILS=$(echo "$FILES" | xargs -P "$JOBS" /tmp/tfc/one.sh)
           if [ -n "$FAILS" ]; then
             echo "$FAILS"
