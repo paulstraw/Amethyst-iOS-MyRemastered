@@ -133,6 +133,7 @@
     self.menuStackView = [[UIStackView alloc] init];
     self.menuStackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.menuStackView.axis = UILayoutConstraintAxisVertical;
+    [self beginMenuIconSelfHeal];   // ★ [UI-C]
     self.menuStackView.distribution = UIStackViewDistributionEqualSpacing;
     self.menuStackView.alignment = UIStackViewAlignmentCenter;
     self.menuStackView.spacing = 8;
@@ -379,6 +380,66 @@
         return UIInterfaceOrientationMaskAll;
     }
     return UIInterfaceOrientationMaskAllButUpsideDown;
+}
+
+
+#pragma mark - ★ [UI-C] 菜单图标自愈
+
+// 根因(上游 Task102/111):主界面按钮是循环里第一个调用 systemImageNamed: 的控件,
+// 进程冷启动首调用存在 CoreUI 符号注册竞态 —— 首调用偶尔拿到 nil,后续调用全部正常,
+// 症状固定为"只有主界面图标消失,其他按钮都在"。这里用 0.25s×40 的有界重试 + 强制重设兜底。
+- (void)refreshMenuIconImages {
+    [self refreshMenuIconImagesForced:NO];
+}
+
+- (void)refreshMenuIconImagesForced:(BOOL)forced {
+    for (UIView *view in self.menuStackView.arrangedSubviews) {
+        if (![view isKindOfClass:[UIButton class]]) continue;
+        UIButton *btn = (UIButton *)view;
+        NSInteger idx = btn.tag;
+        if (idx < 0 || idx >= (NSInteger)self.menuItems.count) continue;
+        UIImage *current = [btn imageForState:UIControlStateNormal];
+        if (!forced && current) continue;
+        NSString *iconName = self.menuItems[idx][@"icon"];
+        if (iconName.length == 0) continue;              // 占位项没有图标
+        UIImage *icon = [UIImage systemImageNamed:iconName];
+        if (!icon) continue;
+        [btn setImage:icon forState:UIControlStateNormal];
+        UIView *iconView = btn.imageView;
+        if (iconView && iconView.superview == btn) { [btn bringSubviewToFront:iconView]; }
+    }
+}
+
+- (BOOL)allMenuIconsLoaded {
+    for (UIView *view in self.menuStackView.arrangedSubviews) {
+        if (![view isKindOfClass:[UIButton class]]) continue;
+        UIButton *btn = (UIButton *)view;
+        NSInteger idx = btn.tag;
+        if (idx < 0 || idx >= (NSInteger)self.menuItems.count) continue;
+        NSString *iconName = self.menuItems[idx][@"icon"];
+        if (iconName.length == 0) continue;              // 占位项不计
+        if (![btn imageForState:UIControlStateNormal]) return NO;
+    }
+    return YES;
+}
+
+- (void)beginMenuIconSelfHeal {
+    [self refreshMenuIconImagesForced:YES];
+    if (self.menuIconSelfHealTimer) return;
+    __weak typeof(self) weakSelf = self;
+    __block NSInteger attempts = 0;
+    NSTimer *timer = [NSTimer timerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *t) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) { [t invalidate]; return; }
+        [strongSelf refreshMenuIconImagesForced:YES];
+        attempts += 1;
+        if (([strongSelf allMenuIconsLoaded] && attempts >= 8) || attempts >= 40) {
+            [strongSelf.menuIconSelfHealTimer invalidate];
+            strongSelf.menuIconSelfHealTimer = nil;
+        }
+    }];
+    self.menuIconSelfHealTimer = timer;
+    [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
 }
 
 @end
