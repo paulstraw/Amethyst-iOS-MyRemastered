@@ -114,8 +114,6 @@ enum TOptions : uint64_t {
     EOptionLinkTimeOptimization = (1ull << 34),
     EOptionValidateCrossStageIO = (1ull << 35),
     EOptionBindingsPerResourceType = (1ull << 36),
-    EOptionRelaxSetBindingLimits = (1ull << 37),
-    EOptionDiscardIsTerminate = (1ull << 38),
 };
 bool targetHlslFunctionality1 = false;
 bool SpvToolsDisassembler = false;
@@ -640,8 +638,6 @@ void ProcessArguments(std::vector<std::unique_ptr<glslang::TWorkItem>>& workItem
                         lowerword == "auto-map-binding"  ||
                         lowerword == "amb") {
                         Options |= EOptionAutoMapBindings;
-                    } else if (lowerword == "relax-set-binding-limits") {
-                        Options |= EOptionRelaxSetBindingLimits;
                     } else if (lowerword == "auto-map-locations" || // synonyms
                                lowerword == "aml") {
                         Options |= EOptionAutoMapLocations;
@@ -740,8 +736,6 @@ void ProcessArguments(std::vector<std::unique_ptr<glslang::TWorkItem>>& workItem
                         AbsolutePath = true;
                     } else if (lowerword == "auto-sampled-textures") {
                         autoSampledTextures = true;
-                    } else if (lowerword == "discard-is-terminate") {
-                        Options |= EOptionDiscardIsTerminate;
                     } else if (lowerword == "invert-y" ||  // synonyms
                                lowerword == "iy") {
                         Options |= EOptionInvertY;
@@ -1211,8 +1205,6 @@ void SetMessageOptions(EShMessages& messages)
         messages = (EShMessages)(messages | EShMsgLinkTimeOptimization);
     if (Options & EOptionValidateCrossStageIO)
         messages = (EShMessages)(messages | EShMsgValidateCrossStageIO);
-    if (Options & EOptionRelaxSetBindingLimits)
-        messages = (EShMessages)(messages | EShMsgRelaxSetBindingLimits);
 }
 
 //
@@ -1362,8 +1354,8 @@ void CompileAndLinkShaderUnits(std::vector<ShaderCompUnit> compUnits)
     SetMessageOptions(messages);
 
     DirStackFileIncluder includer;
-    std::for_each(IncludeDirectoryList.begin(), IncludeDirectoryList.end(), [&includer](const std::string& dir) {
-        includer.pushExternalDirectory(dir); });
+    std::for_each(IncludeDirectoryList.rbegin(), IncludeDirectoryList.rend(), [&includer](const std::string& dir) {
+        includer.pushExternalLocalDirectory(dir); });
 
     std::vector<std::string> sources;
 
@@ -1478,9 +1470,6 @@ void CompileAndLinkShaderUnits(std::vector<ShaderCompUnit> compUnits)
 
         if (Options & EOptionBindingsPerResourceType)
             shader->setBindingsPerResourceType();
-
-        if (Options & EOptionDiscardIsTerminate)
-            shader->setDiscardIsTerminate(true);
 
         // Set up the environment, some subsettings take precedence over earlier
         // ways of setting things.
@@ -2065,8 +2054,6 @@ void usage()
            "              suppress GLSL warnings, except as required by '#extension : warn'\n"
            "  -x          save binary output as text-based 32-bit hexadecimal numbers\n"
            "  --absolute-path                   prints absolute path for messages\n"
-           "  --relax-set-binding-limits        allow larger layout(set) and\n"
-           "                                    layout(binding) values\n"
            "  --auto-map-binding | --auto-map-bindings | --amb\n"
            "                                    automatically bind uniform variables without\n"
            "                                    explicit bindings\n"
@@ -2077,8 +2064,6 @@ void usage()
            "  --client {vulkan<ver> | opengl<ver>}\n"
            "                                    see -V and -G\n"
            "  --depfile <file>                  writes depfile for build systems\n"
-           "  --discard-is-terminate            map GLSL discard to OpTerminateInvocation\n"
-           "                                    instead of OpDemoteToHelperInvocation\n"
            "  --dump-builtin-symbols            prints builtin symbol table prior each\n"
            "                                    compile\n"
            "  -dumpfullversion | -dumpversion   print bare major.minor.patchlevel\n"

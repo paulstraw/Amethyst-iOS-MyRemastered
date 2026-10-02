@@ -61,16 +61,6 @@
 
 namespace glslang {
 
-static int getLayoutSetLimit(bool relaxSetBindingLimits)
-{
-    return relaxSetBindingLimits ? INT_MAX : int(TQualifier::layoutSetEnd);
-}
-
-static int getLayoutBindingLimit(bool relaxSetBindingLimits)
-{
-    return relaxSetBindingLimits ? INT_MAX : int(TQualifier::layoutBindingEnd);
-}
-
 struct TVarEntryInfo {
     long long id;
     TIntermSymbol* symbol;
@@ -308,13 +298,11 @@ private:
 };
 
 struct TResolverUniformAdaptor {
-    TResolverUniformAdaptor(EShLanguage s, TIoMapResolver& r, TVarLiveMap* uniform[EShLangCount], TInfoSink& i,
-                            bool& e, bool relaxSetBindingLimits)
+    TResolverUniformAdaptor(EShLanguage s, TIoMapResolver& r, TVarLiveMap* uniform[EShLangCount], TInfoSink& i, bool& e)
       : stage(s)
       , resolver(r)
       , infoSink(i)
       , error(e)
-      , relaxSetBindingLimits(relaxSetBindingLimits)
     {
         memcpy(uniformVarMap, uniform, EShLangCount * (sizeof(TVarLiveMap*)));
     }
@@ -329,7 +317,7 @@ struct TResolverUniformAdaptor {
             resolver.resolveUniformLocation(ent.stage, ent);
 
             if (ent.newBinding != -1) {
-                if (ent.newBinding < 0 || ent.newBinding >= getLayoutBindingLimit(relaxSetBindingLimits)) {
+                if (ent.newBinding >= int(TQualifier::layoutBindingEnd)) {
                     TString err = "mapped binding out of range: " + entKey.first;
 
                     infoSink.info.message(EPrefixInternalError, err.c_str());
@@ -348,7 +336,7 @@ struct TResolverUniformAdaptor {
                 }
             }
             if (ent.newSet != -1) {
-                if (ent.newSet < 0 || ent.newSet >= getLayoutSetLimit(relaxSetBindingLimits)) {
+                if (ent.newSet >= int(TQualifier::layoutSetEnd)) {
                     TString err = "mapped set out of range: " + entKey.first;
 
                     infoSink.info.message(EPrefixInternalError, err.c_str());
@@ -378,7 +366,6 @@ struct TResolverUniformAdaptor {
     TIoMapResolver& resolver;
     TInfoSink&      infoSink;
     bool&           error;
-    bool            relaxSetBindingLimits;
     TVarLiveMap*    uniformVarMap[EShLangCount];
 private:
     TResolverUniformAdaptor& operator=(TResolverUniformAdaptor&) = delete;
@@ -1607,8 +1594,7 @@ bool TIoMapper::addStage(EShLanguage stage, TIntermediate& intermediate, TInfoSi
     TVarLiveMap* dummyUniformVarMap[EShLangCount] = {};
     TNotifyInOutAdaptor inOutNotify(stage, *resolver);
     TNotifyUniformAdaptor uniformNotify(stage, *resolver);
-    TResolverUniformAdaptor uniformResolve(stage, *resolver, dummyUniformVarMap, infoSink, hadError,
-                                           intermediate.getRelaxSetBindingLimits());
+    TResolverUniformAdaptor uniformResolve(stage, *resolver, dummyUniformVarMap, infoSink, hadError);
     TResolverInOutAdaptor inOutResolve(stage, *resolver, infoSink, hadError);
     resolver->beginNotifications(stage);
     std::for_each(inVector.begin(), inVector.end(), inOutNotify);
@@ -1684,7 +1670,6 @@ bool TGlslIoMapper::addStage(EShLanguage stage, TIntermediate& intermediate, TIn
     // Profile and version are use for symbol validate.
     profile = intermediate.getProfile();
     version = intermediate.getVersion();
-    relaxSetBindingLimits |= intermediate.getRelaxSetBindingLimits();
 
     // Restrict the stricter condition to further check 'somethingToDo' only if 'somethingToDo' has not been set, reduce
     // unnecessary or insignificant for-loop operation after 'somethingToDo' have been true.
@@ -1756,8 +1741,7 @@ bool TGlslIoMapper::doMap(TIoMapResolver* resolver, TInfoSink& infoSink) {
     resolver->endResolve(EShLangCount);
     if (!hadError) {
         //Resolve uniform location, ubo/ssbo/opaque bindings across stages
-        TResolverUniformAdaptor uniformResolve(EShLangCount, *resolver, uniformVarMap, infoSink, hadError,
-                                               relaxSetBindingLimits);
+        TResolverUniformAdaptor uniformResolve(EShLangCount, *resolver, uniformVarMap, infoSink, hadError);
         TResolverInOutAdaptor inOutResolve(EShLangCount, *resolver, infoSink, hadError);
         TSymbolValidater symbolValidater(*resolver, infoSink, inVarMaps,
                                          outVarMaps, uniformVarMap, hadError, profile, version);
@@ -1840,7 +1824,7 @@ bool TGlslIoMapper::doMap(TIoMapResolver* resolver, TInfoSink& infoSink) {
                         qualifier.setBlockStorage(EbsPushConstant);
                         qualifier.layoutPacking = autoPushConstantBlockPacking;
                         // Push constants don't have set/binding etc. decorations, remove those.
-                        qualifier.layoutSet = TQualifier::layoutNotSet;
+                        qualifier.layoutSet = TQualifier::layoutSetEnd;
                         at->second.clearNewAssignments();
 
                         upgraded = true;
@@ -1855,7 +1839,7 @@ bool TGlslIoMapper::doMap(TIoMapResolver* resolver, TInfoSink& infoSink) {
                                        [this](TVarLivePair& p) {
                 if (p.first == autoPushConstantBlockName) {
                         p.second.upgradedToPushConstantPacking = autoPushConstantBlockPacking;
-                        p.second.newSet = TQualifier::layoutNotSet;
+                        p.second.newSet = TQualifier::layoutSetEnd;
                     }
                 });
             }

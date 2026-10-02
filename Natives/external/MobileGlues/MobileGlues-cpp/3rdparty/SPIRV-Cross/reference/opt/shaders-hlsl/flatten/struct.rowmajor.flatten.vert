@@ -26,8 +26,9 @@ struct SPIRV_Cross_Output
 void vert_main()
 {
     Foo _19 = {transpose(float4x3(UBO[0].xyz, UBO[1].xyz, UBO[2].xyz, UBO[3].xyz)), transpose(float4x3(UBO[4].xyz, UBO[5].xyz, UBO[6].xyz, UBO[7].xyz))};
-    V0 = mul(_19.MVP0, v0);
-    V1 = mul(_19.MVP1, v1);
+    Foo _20 = _19;
+    V0 = mul(_20.MVP0, v0);
+    V1 = mul(_20.MVP1, v1);
 }
 
 SPIRV_Cross_Output main(SPIRV_Cross_Input stage_input)

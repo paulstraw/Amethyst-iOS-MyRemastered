@@ -317,8 +317,6 @@ public:
 		uint32_t shader_input_buffer_index = 22;
 		uint32_t shader_index_buffer_index = 21;
 		uint32_t shader_patch_input_buffer_index = 20;
-        uint32_t draw_id_buffer_index = 19;
-		uint32_t reversed_depth_viewport_buffer_index = 18;
 		uint32_t shader_input_wg_index = 0;
 		uint32_t device_index = 0;
 		uint32_t enable_frag_output_mask = 0xffffffff;
@@ -340,7 +338,6 @@ public:
 		bool view_index_from_device_index = false;
 		bool dispatch_base = false;
 		bool texture_1D_as_2D = false;
-		bool emulate_reversed_depth_viewport = false;
 
 		// Enable use of Metal argument buffers.
 		// MSL 2.0 must also be enabled.
@@ -612,14 +609,6 @@ public:
 	bool needs_buffer_size_buffer() const
 	{
 		return !buffers_requiring_array_length.empty();
-	}
-
-	// Provide feedback to calling API to determine if the vertex shader writes
-	// to PointSize. This allows the API to avoid declaring a point size output
-	// when it is not needed.
-	bool get_writes_to_point_size() const
-	{
-		return writes_to_point_size;
 	}
 
 	bool buffer_requires_array_length(VariableID id) const
@@ -897,7 +886,6 @@ protected:
 		SPVFuncImplVariableSizedDescriptor,
 		SPVFuncImplVariableDescriptorArray,
 		SPVFuncImplPaddedStd140,
-		SPVFuncImplPaddedArrayElement,
 		SPVFuncImplReduceAdd,
 		SPVFuncImplImageFence,
 		SPVFuncImplTextureCast,
@@ -933,6 +921,7 @@ protected:
 	                             const std::string &qualifier = "");
 	void emit_struct_member(const SPIRType &type, uint32_t member_type_id, uint32_t index,
 	                        const std::string &qualifier = "", uint32_t base_offset = 0) override;
+	void emit_struct_padding_target(const SPIRType &type) override;
 	std::string type_to_glsl(const SPIRType &type, uint32_t id, bool member);
 	std::string type_to_glsl(const SPIRType &type, uint32_t id = 0) override;
 	void emit_block_hints(const SPIRBlock &block) override;
@@ -1107,15 +1096,15 @@ protected:
 
 	uint32_t get_physical_tess_level_array_size(BuiltIn builtin) const;
 
-	uint32_t get_physical_type_id_stride(TypeID type_id) const override;
+	uint32_t get_physical_type_stride(const SPIRType &type) const override;
 
 	// MSL packing rules. These compute the effective packing rules as observed by the MSL compiler in the MSL output.
 	// These values can change depending on various extended decorations which control packing rules.
 	// We need to make these rules match up with SPIR-V declared rules.
-	uint32_t get_declared_type_size_msl(TypeID type_id, const SPIRType *special_type, bool packed, bool row_major) const;
-	uint32_t get_declared_type_array_stride_msl(TypeID type_id, const SPIRType *special_type, bool packed, bool row_major) const;
-	uint32_t get_declared_type_matrix_stride_msl(TypeID type_id, const SPIRType *special_type, bool packed, bool row_major) const;
-	uint32_t get_declared_type_alignment_msl(TypeID type_id, const SPIRType *special_type, bool packed, bool row_major) const;
+	uint32_t get_declared_type_size_msl(const SPIRType &type, bool packed, bool row_major) const;
+	uint32_t get_declared_type_array_stride_msl(const SPIRType &type, bool packed, bool row_major) const;
+	uint32_t get_declared_type_matrix_stride_msl(const SPIRType &type, bool packed, bool row_major) const;
+	uint32_t get_declared_type_alignment_msl(const SPIRType &type, bool packed, bool row_major) const;
 
 	uint32_t get_declared_struct_member_size_msl(const SPIRType &struct_type, uint32_t index) const;
 	uint32_t get_declared_struct_member_array_stride_msl(const SPIRType &struct_type, uint32_t index) const;
@@ -1127,10 +1116,11 @@ protected:
 	uint32_t get_declared_input_matrix_stride_msl(const SPIRType &struct_type, uint32_t index) const;
 	uint32_t get_declared_input_alignment_msl(const SPIRType &struct_type, uint32_t index) const;
 
-	TypeID get_physical_member_type_id(const SPIRType &struct_type, uint32_t index) const;
+	const SPIRType &get_physical_member_type(const SPIRType &struct_type, uint32_t index) const;
 	SPIRType get_presumed_input_type(const SPIRType &struct_type, uint32_t index) const;
 
-	uint32_t get_declared_struct_size_msl(const SPIRType &struct_type) const;
+	uint32_t get_declared_struct_size_msl(const SPIRType &struct_type, bool ignore_alignment = false,
+	                                      bool ignore_padding = false) const;
 
 	std::string to_component_argument(uint32_t id);
 	void align_struct(SPIRType &ib_type, std::unordered_set<uint32_t> &aligned_structs);
@@ -1191,7 +1181,6 @@ protected:
 	uint32_t swizzle_buffer_id = 0;
 	uint32_t buffer_size_buffer_id = 0;
 	uint32_t view_mask_buffer_id = 0;
-	uint32_t draw_index_buffer_id = 0;
 	uint32_t dynamic_offsets_buffer_id = 0;
 	uint32_t uint_type_id = 0;
 	uint32_t shared_uint_type_id = 0;
@@ -1298,7 +1287,6 @@ protected:
 	bool writes_to_depth = false;
 	bool writes_to_point_size = false;
 	std::string qual_pos_var_name;
-	std::string qual_viewport_idx_var_name;
 	std::string stage_in_var_name = "in";
 	std::string stage_out_var_name = "out";
 	std::string patch_stage_in_var_name = "patchIn";
@@ -1413,7 +1401,6 @@ protected:
 		bool needs_subgroup_size = false;
 		bool needs_sample_id = false;
 		bool needs_helper_invocation = false;
-		bool uses_cooperative_matrix = false;
 	};
 
 	// OpcodeHandler that scans for uses of sampled images

@@ -34,6 +34,7 @@ layout(location = 4) perprimitiveEXT out BlockOutPrim
 } prim_outputs[22];
 
 taskPayloadSharedEXT TaskPayload payload;
+shared float shared_float[16];
 
 void main()
 {

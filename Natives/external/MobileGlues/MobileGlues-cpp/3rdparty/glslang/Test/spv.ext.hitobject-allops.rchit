@@ -50,5 +50,4 @@ void main()
 	uvec2 handle = hitObjectGetShaderRecordBufferHandleEXT(hObj);
 	uint rid = hitObjectGetShaderBindingTableRecordIndexEXT(hObj);
         hitObjectRecordFromQueryEXT(hObjHit, rq, 1U, 2);
-        hitObjectRecordFromQueryEXT(hObjHit, rq, 1U, 2, 0xFEU);
 }

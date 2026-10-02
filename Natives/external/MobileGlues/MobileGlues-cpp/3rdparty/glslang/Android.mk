@@ -51,11 +51,9 @@ $(GLSLANG_BUILD_INFO_H): \
 endef
 $(eval $(call gen_glslang_build_info_h))
 
+GLSLANG_OS_FLAGS := -DGLSLANG_OSINCLUDE_UNIX
 # AMD and NV extensions are turned on by default in upstream Glslang.
-GLSLANG_DEFINES:=-DGLSLANG_OSINCLUDE_UNIX
-ifneq ($(GLSLANG_ENABLE_HLSL),0)
-GLSLANG_DEFINES+=-DENABLE_HLSL
-endif
+GLSLANG_DEFINES:= -DENABLE_HLSL $(GLSLANG_OS_FLAGS)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE:=OSDependent
@@ -76,11 +74,17 @@ LOCAL_MODULE:=glslang
 LOCAL_CXXFLAGS:=-std=c++17 -fno-exceptions -fno-rtti $(GLSLANG_DEFINES)
 LOCAL_EXPORT_C_INCLUDES:=$(LOCAL_PATH) \
 	$(LOCAL_PATH)/glslang/OSDependent/Unix
-
 LOCAL_SRC_FILES:= \
 		glslang/CInterface/glslang_c_interface.cpp \
 		glslang/GenericCodeGen/CodeGen.cpp \
 		glslang/GenericCodeGen/Link.cpp \
+		glslang/HLSL/hlslAttributes.cpp \
+		glslang/HLSL/hlslGrammar.cpp \
+		glslang/HLSL/hlslOpMap.cpp \
+		glslang/HLSL/hlslParseables.cpp \
+		glslang/HLSL/hlslParseHelper.cpp \
+		glslang/HLSL/hlslScanContext.cpp \
+		glslang/HLSL/hlslTokenStream.cpp \
 		glslang/MachineIndependent/attribute.cpp \
 		glslang/MachineIndependent/Constant.cpp \
 		glslang/MachineIndependent/glslang_tab.cpp \
@@ -119,18 +123,6 @@ LOCAL_SRC_FILES:= \
 		SPIRV/SpvTools.cpp \
 		SPIRV/disassemble.cpp \
 		SPIRV/doc.cpp
-
-ifneq ($(GLSLANG_ENABLE_HLSL),0)
-LOCAL_SRC_FILES+= \
-		glslang/HLSL/hlslAttributes.cpp \
-		glslang/HLSL/hlslGrammar.cpp \
-		glslang/HLSL/hlslOpMap.cpp \
-		glslang/HLSL/hlslParseables.cpp \
-		glslang/HLSL/hlslParseHelper.cpp \
-		glslang/HLSL/hlslScanContext.cpp \
-		glslang/HLSL/hlslTokenStream.cpp
-endif
-
 LOCAL_C_INCLUDES:=$(LOCAL_PATH) \
 	$(LOCAL_PATH)/glslang/MachineIndependent \
 	$(LOCAL_PATH)/glslang/OSDependent/Unix \

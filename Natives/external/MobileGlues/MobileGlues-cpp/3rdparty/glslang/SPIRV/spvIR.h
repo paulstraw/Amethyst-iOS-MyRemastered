@@ -189,11 +189,6 @@ public:
         operands[idx] = immediate;
     }
 
-    void clearOperands() {
-        operands.clear();
-        idOperand.clear();
-    }
-
     void addStringOperand(const char* str)
     {
         unsigned int word = 0;
@@ -386,7 +381,6 @@ public:
         case Op::OpReturn:
         case Op::OpReturnValue:
         case Op::OpUnreachable:
-        case Op::OpAbortKHR:
             return true;
         default:
             return false;

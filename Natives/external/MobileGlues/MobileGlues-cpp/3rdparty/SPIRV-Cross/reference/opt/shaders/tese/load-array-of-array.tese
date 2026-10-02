@@ -5,6 +5,6 @@ layout(location = 0) in vec4 vTexCoord[][1];
 
 void main()
 {
-    gl_Position = (vTexCoord[0u][0u] + vTexCoord[2u][0u]) + vTexCoord[3u][0u];
+    gl_Position = (vTexCoord[0u][0] + vTexCoord[2u][0]) + vTexCoord[3u][0];
 }
 

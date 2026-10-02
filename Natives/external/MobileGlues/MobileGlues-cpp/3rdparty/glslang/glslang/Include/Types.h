@@ -47,12 +47,10 @@
 #include "SpirvIntrinsics.h"
 
 #include <algorithm>
-#include <climits>
 
 namespace glslang {
 
 class TIntermAggregate;
-class TIntermTyped;
 
 const int GlslangMaxTypeLength = 200;  // TODO: need to print block/struct one member per line, so this can stay bounded
 
@@ -263,11 +261,6 @@ struct TSampler {   // misnomer now; includes images, textures without sampler, 
         case EbtBFloat16: s.append("bf16"); break;
         case EbtFloatE5M2: s.append("fe5m2"); break;
         case EbtFloatE4M3: s.append("fe4m3"); break;
-        case EbtFloatE2M1: s.append("fe2m1"); break;
-        case EbtFloatE3M2: s.append("fe3m2"); break;
-        case EbtFloatE2M3: s.append("fe2m3"); break;
-        case EbtFloatUE8M0: s.append("fue8m0"); break;
-        case EbtFloatMXINT8: s.append("fmxint8"); break;
         case EbtInt8:   s.append("i8");  break;
         case EbtUint16: s.append("u8");  break;
         case EbtInt16:  s.append("i16"); break;
@@ -816,8 +809,8 @@ public:
             break;
         case EbsPushConstant :
             storage = EvqUniform;
-            layoutSet = TQualifier::layoutNotSet;
-            layoutBinding = TQualifier::layoutNotSet;
+            layoutSet = TQualifier::layoutSetEnd;
+            layoutBinding = TQualifier::layoutBindingEnd;
             break;
         default:
             break;
@@ -868,7 +861,6 @@ public:
 
         layoutPushConstant = false;
         layoutBufferReference = false;
-        layoutDescriptorBufferType = false;
         layoutPassthrough = false;
         layoutViewportRelative = false;
         // -2048 as the default value indicating layoutSecondaryViewportRelative is not set
@@ -891,10 +883,8 @@ public:
         layoutBank = layoutBankEnd;
         layoutDescriptorHeap = false;
         layoutDescriptorStride = layoutDescriptorStrideEnd;
-        layoutDescriptorSize = layoutDescriptorSizeEnd;
         layoutHeapOffset = 0;
-        layoutHeapOffsetNode = nullptr;
-        descriptorHeapDescriptorNode = false;
+        layoutDescriptorInnerBlock = false;
     }
     void clearInterstageLayout()
     {
@@ -924,7 +914,6 @@ public:
                hasFormat() ||
                isShaderRecord() ||
                isPushConstant() ||
-               isBufferType() ||
                hasBufferReference();
     }
     bool hasLayout() const
@@ -945,10 +934,10 @@ public:
                  unsigned int layoutComponent            :  3;
     static const unsigned int layoutComponentEnd      =     4;
 
-                 int layoutSet;
+                 unsigned int layoutSet                  :  7;
     static const unsigned int layoutSetEnd           =   0x3F;
 
-                 int layoutBinding;
+                 unsigned int layoutBinding              : 16;
     static const unsigned int layoutBindingEnd      =  0xFFFF;
 
                  unsigned int layoutIndex                :  8;
@@ -969,17 +958,14 @@ public:
                  unsigned int layoutAttachment           :  8;  // for input_attachment_index
     static const unsigned int layoutAttachmentEnd      = 0XFF;
 
-                 unsigned int layoutSpecConstantId;
-    static const unsigned int layoutSpecConstantIdEnd = UINT_MAX;
+                 unsigned int layoutSpecConstantId       : 11;
+    static const unsigned int layoutSpecConstantIdEnd = 0x7FF;
 
                  unsigned int layoutBank                 : 4;
     static const unsigned int layoutBankEnd            = 0xF;
 
-                 unsigned int layoutDescriptorStride;
+                 unsigned int layoutDescriptorStride     : 4;
     static const unsigned int layoutDescriptorStrideEnd = 0x0;
-
-                 unsigned int layoutDescriptorSize;
-    static const unsigned int layoutDescriptorSizeEnd = 0x0;
 
     // stored as log2 of the actual alignment value
                  unsigned int layoutBufferReferenceAlign :  6;
@@ -989,7 +975,6 @@ public:
 
     bool layoutPushConstant;
     bool layoutBufferReference;
-    bool layoutDescriptorBufferType;
     bool layoutPassthrough;
     bool layoutViewportRelative;
     int layoutSecondaryViewportRelativeOffset;
@@ -999,9 +984,8 @@ public:
     bool layoutHitObjectShaderRecordNV;
     bool layoutHitObjectShaderRecordEXT;
     bool layoutDescriptorHeap;
-    bool descriptorHeapDescriptorNode;
+    bool layoutDescriptorInnerBlock;
     int layoutHeapOffset;
-    TIntermTyped* layoutHeapOffsetNode;
 
     // GL_EXT_spirv_intrinsics
     int spirvStorageClass;
@@ -1029,8 +1013,8 @@ public:
         layoutAlign = layoutNotSet;
         layoutMemberOffset = layoutNotSet;
 
-        layoutSet = layoutNotSet;
-        layoutBinding = layoutNotSet;
+        layoutSet = layoutSetEnd;
+        layoutBinding = layoutBindingEnd;
         layoutAttachment = layoutAttachmentEnd;
     }
 
@@ -1058,11 +1042,11 @@ public:
     }
     bool hasSet() const
     {
-        return layoutSet != layoutNotSet;
+        return layoutSet != layoutSetEnd;
     }
     bool hasBinding() const
     {
-        return layoutBinding != layoutNotSet;
+        return layoutBinding != layoutBindingEnd;
     }
     bool hasOffset() const
     {
@@ -1111,7 +1095,6 @@ public:
     TLayoutFormat getFormat() const { return layoutFormat; }
     bool isPushConstant() const { return layoutPushConstant; }
     bool isShaderRecord() const { return layoutShaderRecord; }
-    bool isBufferType() const { return layoutDescriptorBufferType; }
     bool isFullQuads() const { return layoutFullQuads; }
     bool isQuadDeriv() const { return layoutQuadDeriv; }
     bool hasHitObjectShaderRecordNV() const { return layoutHitObjectShaderRecordNV; }
@@ -1358,12 +1341,6 @@ public:
     }
 };
 
-enum TDerivativeGroupExtension {
-    EdgNone,
-    EdgNV,
-    EdgKHR,
-};
-
 // Qualifiers that don't need to be kept per object.  They have shader scope, not object scope.
 // So, they will not be part of TType, TQualifier, etc.
 struct TShaderQualifiers {
@@ -1390,9 +1367,8 @@ struct TShaderQualifiers {
     int numViews;             // multiview extenstions
     TInterlockOrdering interlockOrdering;
     bool layoutOverrideCoverage;        // true if layout override_coverage set
-    bool layoutDerivativeGroupQuads;    // true if a derivative_group_quads* layout is set
-    bool layoutDerivativeGroupLinear;   // true if a derivative_group_linear* layout is set
-    TDerivativeGroupExtension derivativeGroupExtension;
+    bool layoutDerivativeGroupQuads;    // true if layout derivative_group_quadsNV set
+    bool layoutDerivativeGroupLinear;   // true if layout derivative_group_linearNV set
     int primitives;                     // mesh shader "max_primitives"DerivativeGroupLinear;   // true if layout derivative_group_linearNV set
     bool layoutPrimitiveCulling;        // true if layout primitive_culling set
     bool layoutNonCoherentTileAttachmentReadQCOM; // fragment shaders -- per object
@@ -1433,7 +1409,6 @@ struct TShaderQualifiers {
         layoutOverrideCoverage      = false;
         layoutDerivativeGroupQuads  = false;
         layoutDerivativeGroupLinear = false;
-        derivativeGroupExtension    = EdgNone;
         layoutPrimitiveCulling      = false;
         layoutNonCoherentTileAttachmentReadQCOM = false;
         layoutTileShadingRateQCOM[0] = 0;
@@ -1505,8 +1480,6 @@ struct TShaderQualifiers {
             layoutDerivativeGroupQuads = src.layoutDerivativeGroupQuads;
         if (src.layoutDerivativeGroupLinear)
             layoutDerivativeGroupLinear = src.layoutDerivativeGroupLinear;
-        if (src.derivativeGroupExtension != EdgNone)
-            derivativeGroupExtension = src.derivativeGroupExtension;
         if (src.primitives != TQualifier::layoutNotSet)
             primitives = src.primitives;
         if (src.interlockOrdering != EioNone)
@@ -1592,8 +1565,6 @@ public:
 
     bool isTensorLayoutNV() const { return basicType == EbtTensorLayoutNV; }
     bool isTensorViewNV() const { return basicType == EbtTensorViewNV; }
-
-    const TTypeParameters* getTypeParameters() const { return typeParameters; }
 
     void initType(const TSourceLoc& l)
     {
@@ -1986,7 +1957,8 @@ public:
     virtual void updateImplicitArraySize(int size) { assert(isArray()); arraySizes->updateImplicitSize(size); }
     virtual void setImplicitlySized(bool isImplicitSized) { arraySizes->setImplicitlySized(isImplicitSized); }
     virtual bool isStruct() const { return basicType == EbtStruct || basicType == EbtBlock; }
-    virtual bool isFloatingDomain() const { return isTypeFloat(basicType); }
+    virtual bool isFloatingDomain() const { return basicType == EbtFloat || basicType == EbtDouble || basicType == EbtFloat16 ||
+                                                   basicType == EbtBFloat16 || basicType == EbtFloatE5M2 || basicType == EbtFloatE4M3; }
     virtual bool isIntegerDomain() const
     {
         switch (basicType) {
@@ -2124,11 +2096,6 @@ public:
             case EbtBFloat16:
             case EbtFloatE5M2:
             case EbtFloatE4M3:
-            case EbtFloatE2M1:
-            case EbtFloatE3M2:
-            case EbtFloatE2M3:
-            case EbtFloatUE8M0:
-            case EbtFloatMXINT8:
             case EbtInt8:
             case EbtUint8:
             case EbtInt16:
@@ -2168,20 +2135,6 @@ public:
     bool contains8BitFloat() const
     {
         return containsBasicType(EbtFloatE5M2) || containsBasicType(EbtFloatE4M3);
-    }
-    bool containsOcpMicroscalingFloat() const
-    {
-        return containsBasicType(EbtFloatE2M1) ||
-               containsBasicType(EbtFloatE3M2) ||
-               containsBasicType(EbtFloatE2M3) ||
-               containsBasicType(EbtFloatUE8M0) ||
-               containsBasicType(EbtFloatMXINT8);
-    }
-    bool containsOcpMicroscalingNonByteFloat() const
-    {
-        return containsBasicType(EbtFloatE2M1) ||
-               containsBasicType(EbtFloatE3M2) ||
-               containsBasicType(EbtFloatE2M3);
     }
     bool contains64BitInt() const
     {
@@ -2311,11 +2264,6 @@ public:
         case EbtBFloat16:          return "bfloat16_t";
         case EbtFloatE5M2:         return "floate5m2_t";
         case EbtFloatE4M3:         return "floate4m3_t";
-        case EbtFloatE2M1:         return "floate2m1_t";
-        case EbtFloatE3M2:         return "floate3m2_t";
-        case EbtFloatE2M3:         return "floate2m3_t";
-        case EbtFloatUE8M0:        return "floatue8m0_t";
-        case EbtFloatMXINT8:       return "floatmxint8_t";
         case EbtInt8:              return "int8_t";
         case EbtUint8:             return "uint8_t";
         case EbtInt16:             return "int16_t";
@@ -2429,8 +2377,6 @@ public:
                 appendStr(" push_constant");
               if (qualifier.layoutBufferReference)
                 appendStr(" buffer_reference");
-              if (qualifier.layoutDescriptorBufferType)
-                appendStr(" buffer_type");
               if (qualifier.hasBufferReferenceAlign()) {
                 appendStr(" buffer_reference_align=");
                 appendUint(1u << qualifier.layoutBufferReferenceAlign);
@@ -2476,17 +2422,8 @@ public:
                   appendStr(" descriptor_stride=");
                   appendInt(qualifier.layoutDescriptorStride);
               }
-              if (qualifier.layoutDescriptorSize != TQualifier::layoutDescriptorSizeEnd) {
-                  appendStr(" descriptor_size=");
-                  appendInt(qualifier.layoutDescriptorSize);
-              }
-              if (qualifier.layoutHeapOffset || qualifier.layoutHeapOffsetNode) {
+              if (qualifier.layoutHeapOffset)
                   appendStr(" heap_offset=");
-                  if (qualifier.layoutHeapOffsetNode)
-                      appendStr("<constant-expression>");
-                  else
-                      appendInt(qualifier.layoutHeapOffset);
-              }
 
               appendStr(")");
             }
@@ -2778,13 +2715,7 @@ public:
         uint32_t components = 0;
 
         if (isCoopVecOrLongVector()) {
-            auto* arraySizes = typeParameters->arraySizes;
-            if (!arraySizes || arraySizes->getNumDims() < 1) {
-                // This is a malformed vector type. A later step will
-                // catch the error and emit a diagnostic.
-                return 0;
-            }
-            components = arraySizes->getDimSize(0);
+            components = typeParameters->arraySizes->getDimSize(0);
         } else if (getBasicType() == EbtStruct || getBasicType() == EbtBlock) {
             for (TTypeList::const_iterator tl = getStruct()->begin(); tl != getStruct()->end(); tl++)
                 components += ((*tl).type)->computeNumComponents();
