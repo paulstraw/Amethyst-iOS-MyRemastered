@@ -233,6 +233,8 @@ static const void *kE1InstanceNameKey = &kE1InstanceNameKey;
 @property(nonatomic, strong) UIButton *instancesSortButton;     // 横屏右上「排序 ⇅」
 @property(nonatomic, strong) UIButton *instancesNewButton;      // 横屏右上「＋ 新建」
 @property(nonatomic, strong) UIScrollView *instancesScrollView;
+// ★ [E1-fix] 实例面板表头高度约束(CI run#77 报 property not found: 漏声明)
+@property(nonatomic, strong) NSLayoutConstraint *instancesHeaderHeightConstraint;
 @property(nonatomic, strong) UIStackView *instancesGridView;     // 竖向:每行一个横排行容器
 @property(nonatomic, strong) NSMutableArray<UIView *> *e1InstanceCards;          // 布局后刷新高光/虚线用
 @property(nonatomic, strong) NSMutableArray<CAShapeLayer *> *e1DashedBorderLayers;
