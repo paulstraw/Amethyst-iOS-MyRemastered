@@ -1,0 +1,354 @@
+name: Development build
+
+on:
+  pull_request:
+    branches-ignore:
+      - 'l10n_main'
+    types: [opened, reopened, synchronize]
+  push:
+    branches-ignore:
+      - 'l10n_main'
+  workflow_dispatch:
+
+# 并发控制：同一分支/PR 新的推送会取消仍在排队或运行的旧构建。
+# 这能显著缓解 macos-14 runner 供应紧张导致的"一直卡在队列中"问题：
+# 开发中频繁 push 时，旧构建被立即取消，runner 资源让给最新提交。
+# workflow_dispatch 手动触发也纳入同一组，避免与自动触发互相堆积。
+concurrency:
+  group: dev-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Development build
+    strategy:
+      matrix:
+        include:
+          - platform: 2
+            platform_name: ios
+
+    runs-on: macos-14
+
+    # 发布 nightly release 需要 contents: write
+    permissions:
+      contents: write
+
+    # Task205b/c：brew 加固 + 全局限时（run 36722042665 教训）。
+    #   (1) job 级禁用 brew auto-update——auto-update 可在任意 brew
+    #       调用里复发；显式 update 只在 Install GNU Make 容错跑一次
+    #       （Task205c 撤销看门狗：击杀在途 update 会毒化 tap）。
+    #   (2) timeout-minutes=60：健康 run 稳定 8-13 分钟（近 10 次实测），
+    #       BUILD_MOBILEGL=1 场景约 30-45 分钟，60 分钟全覆盖；任何
+    #       挂死类故障从"无限等到手动取消"变成"限时自动失败可重跑"。
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    timeout-minutes: 60
+
+    steps:
+      - name: Select Xcode 15.4
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version || true
+
+      # Task205：CI 构建缓存（用户需求——加速 CI 出包）。
+      #   (1) ccache —— MobileGlues（glslang+SPIRV-Cross+MG 本体，实测 3.4 分钟
+      #       = 全构建最大单项）与 Natives cmake 侧（vgpu/tinygl4angle/垫片）
+      #       的 C/C++ 重编全量命中；键含 Makefile/CMakeLists hash，改构建
+      #       脚本自动失效，restore-keys 前缀命中保证小改动仍部分复用。
+      #   (2) Homebrew 下载缓存 —— make/temurin8/ldid 的 bottle 下载。
+      # 仓库级缓存配额 10GB：ccache 限 2G + brew 约 1G，余量充足；
+      # 发布产物走 artifact/release 不占 cache。
+      - name: Cache ccache compilation cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          # Task206: +ThirdParty/ZalithLauncher2/src/**（dep_nggl4es 编译面，
+          # 与 vgpu 同款入桶口径；内容哈希自失效，桶键只为配置漂移换桶）
+          key: ccache-macos14-v1-${{ hashFiles('Makefile', 'Natives/CMakeLists.txt', 'Natives/external/vgpu/src/**', 'ThirdParty/ZalithLauncher2/src/**') }}
+          restore-keys: |
+            ccache-macos14-v1-
+
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew/downloads
+          key: brew-macos14-v1-${{ hashFiles('.github/workflows/development.yml') }}
+          restore-keys: |
+            brew-macos14-v1-
+      - name: Cache ccache tool itself
+        # Task205c：ccache 本体也进缓存（官方预编译 darwin 包 ~2MB，
+        # x86_64+arm64 通用二进制）。键含版本号：升版本自动失效重取。
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/ccache-tool
+          key: ccache-tool-macos14-v1-4.14.1
+
+      - name: Install GNU Make
+        # Task205c（撤销 Task205b 看门狗，RETRACTED）：三份日志定谳——
+        # 原始 70 分钟"网络挂死"实为 brew install ccache 触发 LLVM/Clang
+        # 源码编译（cmake --build 近零输出酷似挂死）；brew update 本体
+        # 三次实测 30-33 秒。看门狗击杀在途 update 反而毒化 tap
+        # （36735179980 attempt 2：ChecksumMismatchError）。现方案：
+        # update 容错（快速失败继续用镜像 tap），挂死类极端情况交给
+        # job 级 timeout-minutes=60 兜底。
+        run: |
+          brew update || true
+          brew install make
+
+      - name: Install ccache (upstream prebuilt, brew-free)
+        # Task205c：ccache 移出 brew。brew 的 ccache 在 macos-14 上解析
+        # 出 llvm@22/rust/ruby/gcc 依赖树：llvm@22 无 arm64_sonoma
+        # bottle -> 源码编译 LLVM+Clang（1-2 小时级，即 36722042665
+        # 的 70 分钟"挂死"真身）；openssl@3 3.6.5 同样源码编译且
+        # brew link 撞镜像内 openssl@1.1 符号冲突。官方 release 的
+        # darwin 包仅链系统库（libSystem/libc++）——解包即用 ~5 秒。
+        env:
+          CCACHE_TOOL_VERSION: "4.14.1"
+        run: |
+          set -e
+          PREFIX="$HOME/.local/ccache-tool"
+          mkdir -p "$PREFIX/bin"
+          if [ -x "$PREFIX/bin/ccache" ] && "$PREFIX/bin/ccache" --version 2>/dev/null | head -1 | grep -q "$CCACHE_TOOL_VERSION"; then
+            echo "[ccache-tool] cache hit: $("$PREFIX/bin/ccache" --version | head -1)"
+          else
+            echo "[ccache-tool] fetching upstream prebuilt (brew dependency tree avoided)"
+            curl -fsSL "https://github.com/ccache/ccache/releases/download/v${CCACHE_TOOL_VERSION}/ccache-${CCACHE_TOOL_VERSION}-darwin.tar.gz" -o /tmp/ccache-darwin.tar.gz
+            tar -xzf /tmp/ccache-darwin.tar.gz -C /tmp
+            cp "/tmp/ccache-${CCACHE_TOOL_VERSION}-darwin/ccache" "$PREFIX/bin/ccache"
+            chmod +x "$PREFIX/bin/ccache"
+            "$PREFIX/bin/ccache" --version | head -1
+          fi
+          echo "$PREFIX/bin" >> "$GITHUB_PATH"
+
+      - name: Install Java 8 (Temurin) via Homebrew
+        run: |
+          brew install --cask temurin@8 || true
+
+      - name: Install ldid
+        run: |
+          brew install ldid || true
+
+      - name: Remove work folders
+        run: |
+          echo "before"
+          ls -lah ./
+          rm -rf ./* || true
+          rm -rf ./.??* || true
+          echo "after"
+          ls -lah ./
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Drop stale submodule gitlinks
+        # 历史遗留：MobileGL 曾以 submodule 方式接入，上游 force push 导致 pinned
+        # commit 消失、孤立 gitlink 被反复引入，当时靠这个步骤清理。
+        # MobileGL 现在与 MobileGlues 一样是 vendored 源码目录（见
+        # .github/workflows/vendor-mobilegl.yml），不再是 gitlink。
+        # 因此这里只在 git ls-files -s 显示 mode 160000（确实是 gitlink）时才清理，
+        # 避免把 vendored 的真实源码目录从索引里删掉。
+        run: |
+          for p in Natives/external/MobileGL Natives/external/MobileGlues; do
+            mode=$(git ls-files -s -- "$p" 2>/dev/null | awk '{print $1}')
+            if [ "$mode" = "160000" ]; then
+              echo "dropping stale gitlink: $p"
+              git rm --cached -f "$p" || true
+              git config --remove-section "submodule.$p" 2>/dev/null || true
+            else
+              echo "$p is a regular path (mode=${mode:-none}), keeping"
+            fi
+          done
+
+      - name: Checkout repository submodules
+        env:
+          # MobileGL 上游 LFS 配额已用尽，其 LFS 文件（tools/trace_replay/fixtures）
+          # 与 iOS 构建无关，跳过 smudge 避免 submodule checkout 失败 exit 128
+          GIT_LFS_SKIP_SMUDGE: "1"
+        run: git submodule update --init --recursive
+
+      # 注意：不要在 `if:` 条件里引用 secrets / vars。
+      # GitHub Actions 的表达式求值器在编译 workflow 时处理这些 context，
+      # vars 在仓库尚未创建任何 variable 时求值也会失败，导致整个 workflow
+      # 编译失败（表现为 run 直接 failure、jobs total_count=0、日志 404）。
+      # 判断逻辑一律放进 shell，env: 里引用是安全的标准用法。
+      #
+      # Mithril（Task 139）：libmithril.dylib 已 vendored 自 Mithril-Wrapper
+      # 主线构建（Natives/resources/Frameworks/，随 Natives/resources/* 一起
+      # 打包）——"OpenGL 4.0 实验性"后端自此随包可用，不再显示"未构建"。
+      - name: Build for ${{ matrix.platform_name }}
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: 14.0
+          CONFIG_CURSEFORGE_API_KEY: ${{ secrets.CONFIG_CURSEFORGE_API_KEY }}
+          # 供下面的 make 使用（控制 dep_mobilegl 是否从仓库内源码编译 MobileGL）。
+          # 在 env: 里引用 vars 是官方支持的用法；不要写成
+          # `export BUILD_MOBILEGL=${{ vars.BUILD_MOBILEGL || '0' }}` 放进 run:，
+          # 那样仍会在 workflow 编译期求值 vars。
+          BUILD_MOBILEGL: ${{ vars.BUILD_MOBILEGL }}
+        run: |
+          set -o pipefail
+          export PATH="$HOME/.local/ccache-tool/bin:/opt/homebrew/bin:$PATH"
+          export SLIMMED=0
+          export BUILD_MOBILEGL="${BUILD_MOBILEGL:-0}"
+          # Task205：ccache 接线（仅影响 cmake 侧 C/C++ 编译；javac 不受
+          # 影响）。首次运行冷缓存无加速，第二次起 MobileGlues+vgpu 的重编
+          # 全部命中，预计省 3-4 分钟/次。
+          export CCACHE_DIR="$HOME/.ccache"
+          ccache --set-config=max_size=2G || true
+          export CC="ccache clang"
+          export CXX="ccache clang++"
+          ccache --zero-stats 2>/dev/null || true
+
+          if [ "${{ matrix.platform_name }}" == "ios" ]; then
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} 2>&1 | tee build_output.log
+
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1 2>&1 | tee -a build_output.log
+
+          elif [ "${{ matrix.platform_name }}" == "tvos" ]; then
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1 2>&1 | tee build_output.log
+
+          else
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} 2>&1 | tee build_output.log
+          fi
+          echo '== Task205 ccache stats ==' 2>/dev/null || true
+          ccache --show-stats 2>/dev/null || true
+
+      - name: Surface build errors as annotations
+        # Task179 CI 诊断：编译器错误行以 GitHub annotation 浮出——job log 需要登录，
+        # annotations 匿名 API 可读。只在构建失败时运行，正常路径零开销。
+        if: failure()
+        run: |
+          LOG=build_output.log
+          if [ ! -f "$LOG" ]; then
+            echo "::error::build failed before producing build_output.log (configure/setup stage)"
+            exit 0
+          fi
+          ann() { m=$(printf '%s' "$1" | cut -c1-250 | sed 's/"//g' ); echo "::error::$m"; }
+          grep -nE '\*\*\*.*Error [0-9]+' "$LOG" | tail -5 | while IFS= read -r l; do ann "make-fail $l"; done
+          grep -n ' error: ' "$LOG" | grep -vE 'deprecat|note:|warning' | head -12 | while IFS= read -r l; do ann "diag $l"; done
+          grep -nE 'fatal error|Undefined symbols|not found|^ld: ' "$LOG" | head -8 | while IFS= read -r l; do ann "linker $l"; done
+          tail -8 "$LOG" | while IFS= read -r l; do ann "tail $l"; done
+
+      - name: Upload MobileGL dylib (if built)
+        # MobileGL 从源码编译，产物在 Natives/build/ 下。单独上传一份，
+        # 这样验证通过后可以直接拿到 dylib 提交进仓库，不必下载 195MB 的 ipa 再提取。
+        # 未开启 BUILD_MOBILEGL 或编译失败时目录不存在，用 hashFiles 判断后跳过。
+        if: matrix.platform_name == 'ios' && success() && hashFiles('Natives/build/libMobileGL.dylib') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: libMobileGL.dylib
+          path: Natives/build/libMobileGL.dylib
+          if-no-files-found: ignore
+
+      - name: Upload MobileGL GLES dylib (if built)
+        if: matrix.platform_name == 'ios' && success() && hashFiles('Natives/build/libMobileGL-gles.dylib') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: libMobileGL-gles.dylib
+          path: Natives/build/libMobileGL-gles.dylib
+      - name: Commit MobileGL dylibs back to repo (one-shot)
+        # 绝不能因为这一步失败就拖垮 ipa 产物：提交是锦上添花，dylib 已随 artifact 上传，
+        # 用户始终可以从 artifact 直接取用。
+        continue-on-error: true
+        if: matrix.platform_name == 'ios' && success() && hashFiles('Natives/build/libMobileGL.dylib') != '' && hashFiles('Natives/build/libMobileGL-gles.dylib') != '' && vars.COMMIT_MOBILEGL == '1'
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          set -e -x
+          # 把 CI 编译出的 dylib 提交回仓库，避免每次构建重编 glslang + SPIRV-Cross
+          # （macOS runner 约二三十分钟，且 Actions 对 macOS 按 10 倍计费）。
+          # dylib 未剥离，各约 90MB：git 默认 http.postBuffer 只有 1MB，推大文件会
+          # 出现 HTTP 413 / send-pack 断连，这里放大到 500MB。
+          git config http.postBuffer 524288000
+          git config http.version HTTP/1.1
+          git config http.lowSpeedLimit 1000
+          git config http.lowSpeedTime 300
+          cp Natives/build/libMobileGL.dylib Natives/resources/Frameworks/libMobileGL.dylib
+          cp Natives/build/libMobileGL-gles.dylib Natives/resources/Frameworks/libMobileGL-gles.dylib
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f Natives/resources/Frameworks/libMobileGL.dylib Natives/resources/Frameworks/libMobileGL-gles.dylib
+          if git diff --cached --quiet; then
+            echo "[ci] MobileGL dylibs unchanged, nothing to commit."
+            exit 0
+          fi
+          git commit -m "chore(mobilegl): 提交 iOS 版 MobileGL 预编译产物 [skip ci]"
+          # 期间可能已有新提交，先 rebase 再推；仍失败则打印远端状态便于定位。
+          if ! git push origin HEAD:"$BRANCH_NAME"; then
+            echo "[ci] 首次推送失败，尝试 pull --rebase 后重试"
+            git pull --rebase origin "$BRANCH_NAME" || true
+            git push origin HEAD:"$BRANCH_NAME"
+          fi
+          echo "[ci] MobileGL dylibs committed: libMobileGL.dylib (DirectVulkan), libMobileGL-gles.dylib (DirectGLES)"
+
+      - name: Upload MobileGL build log
+        # MobileGL 从源码编译，Air 仓库历史上 9 个提交都没编过。
+        # payload 里用 `-$(MAKE) dep_mobilegl` 调用，失败不阻断主构建，
+        # 因此失败原因会被静默吞掉 —— 这里把 dep_mobilegl 落盘的日志
+        # （含诊断信息与真实退出码）无条件上传，便于定位。
+        if: matrix.platform_name == 'ios' && always() && hashFiles('mobilegl-build.log') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobilegl-build.log
+          path: mobilegl-build.log
+          if-no-files-found: ignore
+
+      - name: Upload regular ipa
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: com.air-devs.air-${{ matrix.platform_name }}.ipa
+          path: artifacts/com.air-devs.air-*-${{ matrix.platform_name }}.ipa
+
+      - name: Upload regular tipa
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: com.air-devs.air-${{ matrix.platform_name }}-trollstore.tipa
+          path: artifacts/com.air-devs.air-*-${{ matrix.platform_name }}-trollstore.tipa
+
+      - name: Upload PojavLauncher.dSYM
+        if: matrix.platform_name == 'ios' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AngelAuraAmethyst.dSYM
+          path: artifacts/AngelAuraAmethyst.dSYM
+
+      # 把产物发布到固定的 nightly release：artifact 下载链接只有 10 分钟有效，
+      # release asset 链接长期固定，便于挂代理/镜像加速（国内直连 GitHub 很慢）。
+      # 每次先删除同名 release，保证始终只有一个 nightly、链接地址不变。
+      - name: Publish nightly release
+        if: matrix.platform_name == 'ios' && success() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/feat/sdl3'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="nightly-sdl3"
+          SHORT=$(git rev-parse --short HEAD)
+          IPA=$(ls artifacts/com.air-devs.air-*-ios.ipa 2>/dev/null | head -1 || true)
+          TIPA=$(ls artifacts/com.air-devs.air-*-ios-trollstore.tipa 2>/dev/null | head -1 || true)
+          if [ -z "$IPA" ]; then
+            echo "No ipa under artifacts/, skip release"
+            exit 0
+          fi
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          ASSETS=("$IPA")
+          if [ -n "$TIPA" ]; then ASSETS+=("$TIPA"); fi
+
+          # MobileGL 构建日志写进 release body。
+          # GitHub artifact 下载走 blob 存储，某些网络环境下被拒（403）；
+          # release body 可走 api.github.com 正常读取，于是把日志塞进 notes，
+          # 便于在不下载 artifact 的情况下查看编译失败原因。
+          # 日志可能很长：只取头 200 行 + 尾 200 行，再截断到 30000 字符。
+          NOTES="自动构建：${{ github.ref_name }} @ ${SHORT}。链接长期固定，可用镜像加速下载。"
+          if [ -f mobilegl-build.log ]; then
+            MGLOG=$( { head -200 mobilegl-build.log; echo "...[truncated]..."; tail -200 mobilegl-build.log; } )
+            MGLOG=$(printf %s "$MGLOG" | cut -c1-30000)
+            NOTES="${NOTES}"$'\n\n'"## MobileGL build log"$'\n\n'"${MGLOG}"
+          fi
+
+          gh release create "$TAG" \
+            --prerelease \
+            --title "Nightly (SDL3) @ ${SHORT}" \
+            --notes "$NOTES" \
+            "${ASSETS[@]}"

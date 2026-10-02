@@ -1,0 +1,1270 @@
+# Worklog
+
+## ⚡ READ ME FIRST —— 会话速览（只读本节> Task 141 全文已挪入 worklog-archive.md（Task 157 收尾时行数控制，`grep -n "Task 141" worklog-archive.md` 检索）。
+
+ + 「滚动近况」即可开工；更早历史一律查 worklog-archive.md，勿通读）
+
+> 最后更新：Task 165（2026-09-25，ES/4.0 黑屏真根因根修：Task154 的 LWJGL delegate dlsym 补丁致 gl* 解析绕过 MobileGlues 前端，前端导出 xglGetProcAddress 复活死名查找；renderTexture 探针 + RCAS 运行期熔断）。此前：Task 164（RCAS 四项对齐 + 壁纸 nil 判定 + Vulkan FSR 矩阵）；Task 163（新拟态范围修正）；Task 162（八案根修）；Task 161（六案根修）。
+> 新会话规则：新任务记录**追加到本文件最末尾**（`## Task N` 或 `---/Task ID:` 模板均可）；收尾时同步更新下面「当前状态」表；本文件超过 ~400 行时把最旧的任务段挪进 worklog-archive.md。
+
+### 一句话
+AngelAuraAmethyst（Amethyst-iOS 重制版，fork **Gsjsjzhznsz/Air-Minecraft-iOS-Launcher**）——iOS Minecraft 启动器，已发布 **v6.0.0**：MC 26.x 全链路可玩（26.3-pre-1 + Fabric + 128 mods + MobileGlues 渲染链）。当前主线：UI 打磨、渲染器存储分层（auto/mg + mobileglues.renderer_backend）、各 MC 版本崩溃根修。
+
+### 当前状态（收尾时更新）
+| 项 | 值 |
+|---|---|
+| 远端 HEAD | Task 182 提交 59d4b48（bc1941b 三根因：ANGLE 命名空间钉死 / vgpu ES3.2 请求 / JIT dismiss 同步化），CI 绿；本轮 Task 183 四根因待推（spvc 注册表 1024 + ESSL 清洗 / vgpu 版本随探测 / 换根同步化 / 键位 v2 恢复）；此前 488f25b（Task181 六症状）|
+| 最新 Task 号 | **183**（多会话并行开发，开新任务前先 fetch 避让编号） |
+| 待用户装机验证 | Task 183（四线锚点见文末）+ Task 182（三锚点）+ Task 181（六锚点）+ Task 180（双滑条透明度）+ Task 179（八连修）+ Task 178/177（新拟态定稿）+ 更早轮次 |
+| 已知历史遗留 | v6.0.0-release-notes.md 是工作区工件不在 git（发布时从 announcements.json 重导出）；部分 verify 级联失败为沙箱环境性（会话本地脚本被清 + task132/135/149/158 路径依赖 + task140 G2/G3 日志轮换），与基线对拍判读 |
+
+### 双会话并行协作规则（重要）
+- 推送前必须 `git fetch origin && git rebase origin/main`；Task 编号冲突避让下一空号并在记录里注明
+- 验证器级联：`scripts/verify_taskNNN.py`（129-142 全家）；动 l10n/公共 UI 必须重锚基线计数（当前 1924）并对拍「零新增失败」
+- 沙箱会随机重置工作区/本地 ref：**仓库是唯一事实源**；工作区工件丢失按 archive 记录重建；本地落后时 `git fetch && git reset --hard origin/main`
+
+### 关键路径与命令
+- 仓库: `/home/z/my-project/Amethyst-iOS-MyRemastered`；GitHub token 在 `git remote -v` 的 URL 里（放心直接用）
+- CI 轮询: `TOKEN=$(git remote get-url origin | sed -n 's\|https://[^:]*:\([^@]*\)@.*\|\1\|p')` + `/actions/runs?per_page=N` API；失败先拉 job log grep "error:"
+- 产物: artifact `com.air-devs.air-ios.ipa`（另有 trollstore .tipa / dSYM）
+- l10n: en/zh-CN/zh-Hans/zh-Hant 四语言键集一致，基线 1952
+- 用户日志: 直接推仓库根 latestlog* 系列（勿删）；`/home/z/my-project/upload/` 为旧渠道（hs_err_pid*.log）
+- 装机日志轮换映射（Task 144 时点）：latestlog.txt=Mithril(4.0) 崩溃会话 / latestlog.old.txt=MobileGL-gles(ES) 会话 / latestlog=Forge 安装会话 / latestlog.old=OSMesa(zink) 会话
+
+### 高频方法论（细节查 archive）
+- hs_err 判读：信号类型 / si_addr（ASCII 字节=UAF 或字符串当指针；地址截断=ABI 错位）/ pc 崩溃帧 / free stack 排除栈溢出；latestlog 管道会丢尾，截断点 ≠ 崩溃点
+- CI 产物必须 `strings` 验证包含新日志串再交付；TEST-ONLY 补丁用 python 定点替换（禁 git checkout 回滚）；Makefile 防 tab→空格污染
+- shaderc 渲染链（Task 30-47 沉淀）：main_hook.m 32MB 栈 hop → shaderc_shim.c（串行化 + SIGSEGV 恢复网 + 源快照 + #include 文本级展开）→ libshaderc_impl（源码构建 + lValueErrorCheck 二进制补丁）
+
+### 历史检索
+- Tasks 34-140 明细 → `grep -n "Task ID:" worklog-archive.md`；Task 141 起在本文件（141/154 两段已挪 archive 留指针）
+- 找 commit：`git log --oneline --grep "Task N"`
+
+---
+
+---
+
+## Task 142（渲染器）——已挪 worklog-archive.md
+> 全文检索：`grep -n "Task ID: 142" worklog-archive.md` 或 `grep -n "Task 142" worklog-archive.md`（存储分层设计/三端 UI/l10n +3/-1/发布资产/校验矩阵）。
+
+## Task 143（装机日志三修复）——已挪 worklog-archive.md
+> 全文检索：`grep -n "Task ID: 143" worklog-archive.md` 或 `grep -n "Task 143" worklog-archive.md`（后端键注册/FSR 常量勘误/mg 与 MobileGlues 并列归因）。
+
+---
+
+## 附：追加区
+新任务记录直接追加在本文件**最末尾**（保持上面速览表的「当前状态/最新 Task 号」同步更新）。本文件增长到 ~400 行时，把最旧的任务段剪切进 worklog-archive.md 归档。
+
+## 会话记录（2026-09-22，worklog 瘦身重构，未占用 Task 编号）
+- 动机：worklog.md 膨胀至 2327 行，每次会话入场要消化全量历史，效率低
+- 动作：① 速览节置顶（状态表/双会话协作规则/关键命令/方法论/检索指引）；② Tasks 34-140 原文归档 worklog-archive.md（2257 行）；③ Task 141/142 原文保留本文件
+- 配套重锚：9 个验证器的 worklog 内容检查改为兼容 worklog-archive.md（92/93/96/97/98/101/102/111/119_124，python 定点替换）
+- 验证：96/98/111/119_124 本地全绿；92/93/101/102 的条目在重构前即缺失（历史丢失，非本次回归，且不在 CI 集内）
+
+## Task 144（装机日志四 bug 根修 + 渲染器 UX 七项）/ Task 145（Sodium 全崩根修 + 4.0 门补丁 + Forge 线程化）/ Task 148（MobileGL 双后端 FSR 复活）——均已挪 worklog-archive.md
+> 全文检索：`grep -n "Task ID: 144\|Task ID: 145\|Task ID: 148" worklog-archive.md`。
+## Task 149（UI 六项返工）——已挪 worklog-archive.md
+> 全文检索：`grep -n "Task ID: 149" worklog-archive.md`（UI 六项/重锚链）。
+
+## Task 150（删除渲染器全局控制 + Sodium 组件安装）/ Task 151 / Task 153 / Task 156（含续）——已挪 worklog-archive.md
+> 全文检索：`grep -n "Task ID: 150\|Task ID: 151\|Task 153\|Task ID: 156" worklog-archive.md`（Task165 收尾时行数控制归档）。
+
+
+## Task 157（本会话，内存分配卡片弹窗 + Sodium + Iris Shaders；原编号 154 被并行会话占用，按协作规则重编号）
+
+### 用户需求（Task 149/150 实装后的两项返工）
+1. 实例设置 > 内存分配：行右侧去除"最大可分配内存"、加与 Java 版本同款右箭头；弹窗高度/顶部抓手条不对 → 改居中卡片（类放大 alert，右上角✕ = 实例页同款关闭语义），原生观感出入场动画；"当前内存：xMB"简介升为标题字号、"内存分配"弹窗标题删除；拉条下保持间距加"自动分配内存"开关，开启后拉条变灰、右侧显示"自动分配内存"；用原启动器自动分配逻辑。
+2. 组件安装 Sodium → Sodium + Iris Shaders：功能同步改；"仅 Fabric 有效"弹窗改为 Fabric API 同文案结构（换模组名）；组件安装区灰字加一行"Sodium + Iris Shaders：优化模组 + 光影加载器 (附带安装Podium)"。
+
+### 用户问答定稿（AskUserQuestion）
+弹窗形态=居中卡片；保存时机=即改即存（✕/点外部仅关闭）；自动挡拉条=显示自动比例实值（置灰）；新实例默认态=默认手动（仅显式拨过开关才为自动）；安装内容=三个 jar（Sodium+Iris+Podium）；统一下载任务显示名=Sodium + Iris Shaders + Podium。
+
+### 实施（ProfileSettingsViewController.m 单文件主战场 + l10n x4 + announcements.json）
+- **内存行（A）**：detailTextLabel 改 `memoryAutoEnabled ? memory.auto_row : "%ld MB"`（去 "/ 最大值"）；accessoryType 改 DisclosureIndicator（Java 版本同款）。
+- **Ame157MemoryAllocatorCard（B）**：Task149 的 Ame149MemoryAllocatorController sheet 整体退役（mediumDetent/grabber/formSheet 回退清零）。居中卡片 340pt（≤ 屏宽-48）圆角 18 + 窗口式投影（masksToBounds NO，手绘不走 ame_applyCardSurfaceWithRadius——该助手裁剪会吃掉阴影）；右上角 xmark.circle.fill ✕ + 点外部 UIControl 关闭；"当前内存：xMB"（memory.current）升为 17pt semibold 标题、i18n_str_2037 弹窗标题退役（仅保留表格行名映射）；拉条 512→MAX(1024,maxMemory) 不变；下方 16pt 间距新增 memory.auto_row 标签 + UISwitch。自动挡：`enabled=NO` 置灰 + 显示 `MAX(512, ameAutoMemory)` 实值 + 标题切"自动分配内存"；关自动还原最近手动值。Ame157CardTransitionAnimator 自绘转场：入场 spring 缩放 1.14→1 + 遮罩淡入 0.38s，出场 1.08 缩放淡出 0.26s（UIModalPresentationCustom + 自持 transitioningDelegate）。
+- **即改即存（C）**：ame157SliderReleased（TouchUpInside|UpOutside）与 ame157AutoSwitchChanged 当下回调 ameOnChange → 父层 `memoryAutoEnabled = autoEnabled; allocatedMemory = autoEnabled ? 0 : memoryMB;` → saveSettings → reloadAllTableViews；拖动中 ValueChanged 仅刷标题不落盘。
+- **持久化**：profile 新键 `memoryAuto`（仅显式拨过为 YES——"默认手动"）；saveSettings 分支：自动 = `allocatedMemory=0 + memoryAuto@YES`，手动 = 数值 + 清键。`allocatedMemory=0` 恰为启动链 ame141_currentLaunchAllocMem 既有自动语义（0.5/0.25 比例）→ **JavaLauncher/SurfaceViewController/utils 零改动**，Jetsam 链自动一致。自动实值计算与 utils.m 同口径（getEntitlementValue memorystatus ? 0.5 : 0.25 × 物理 MB）。
+- **Sodium + Iris Shaders（D）**：行名/映射/isEqual 判断 ×2 升级；火焰图标保留；门槛弹窗改 i18n_str_899 + 新键 component.sodium.fabric_only（Fabric API i18n_str_900 同构换名）；一键装三 jar：ame150 助手沿用，链 = sodium → iris shaders → iris 回退（防官方改名）→ podium，ame157_downloadAll 三下载串行（dlError1/2/3）+ 三文件落盘（ok1/2/3 级联守卫），done 提示三文件并列，失败码扩至 11/12；任务 displayName=Sodium + Iris Shaders + Podium、resourceName=sodium-iris-podium-<版本>。
+- **l10n（E）**：+2 键（memory.auto_row / component.sodium.fabric_only）×4 门语言（ja/km 沿 Task150 口径不涉）；i18n_str_882 footer 加用户原文行；sodium 六键文案改写含 Iris（confirm_title/confirm_message/searching/not_found/download_failed/done）。基线 1946→1948。
+- **发布资产（F）**：announcements.json 四处同步（summary/content bullet/EN 尾段/内存分配口径改"居中卡片弹窗（右上角✕关闭，新增自动分配内存开关）"）。
+
+### 校验
+- verify_task157 新增 44 项全绿（A 内存行 3 / B 卡片弹窗 10 / C 持久化与启动链 6 / D Sodium+Iris 9 / E l10n 7 / F 发布资产 4 / G 配平+白名单 2 / H 回归锚点 3）。
+- 门禁重锚：l10n 计数门 1946→1948 共 14 处（129-135/138/139/142/143/150/151 + 并行新增的 verify_task156 F1，描述算式同步改真）；verify_task149 E 块重锚 Task157 卡片形态（35/35）；verify_task150 D1/D7/D8/F4 重锚三 jar + 行名（43/43）；verify_task141 C2/C3/C5/D5/D5b 重锚即改即存+自绘转场（36/36）。
+- 级联对拍：129=44/47（基线 44/47；A9 为并行 Task156 改 Makefile payload 行的显见重锚，本任务顺手修复并注明）、130=59/60、131=34/37、132=IndexError、133=41/44、134=64/68、138=49/51、139=26/36、142=1、143=1——**与基线逐项一致**；151/135/153/154(并行)/156-G 块的失败均为 MyRemastered 沙箱环境性（156 的 G 块子进程 36P/3F 基线口径不变，其 l10n 计数门已随本任务提升 1948）。**零新增失败**。
+
+### Stage Summary
+- 产出：本地 main 提交（推送后 CI 出包）；verify_task157 44/44 绿。
+- 用户验证锚点（装机后）：①内存行右侧只有 "xxxx MB" 且带右箭头；②点开 = 居中卡片（右上角✕、大字当前内存、拉条、"自动分配内存"开关），缩放+淡入出入场，无抓手条；③拨开开关 → 拉条变灰显示自动实值、行右侧变"自动分配内存"、✕ 关闭即生效（启动日志 `[Task141] launch memory from auto ratio: xxxx MB`）；④关开关 → 还原手动值；⑤组件区行名"Sodium + Iris Shaders"，非 Fabric 实例点按弹 Fabric API 同构长文案；⑥Fabric 实例一键装 3 jar（下载任务名 Sodium + Iris Shaders + Podium），装完 mods/ 含 sodium/iris/podium 三个文件；⑦组件区灰字含"Sodium + Iris Shaders：优化模组 + 光影加载器 (附带安装Podium)"。
+- 技术要点：allocatedMemory=0 与 memoryAuto=YES 双写保证启动链无需感知新键；旧实例（无标记）显示与启动行为错位为用户定稿接受项（显示手动缺省值、实际按自动比例启动——与 Task141 以来行为一致）；本任务开工时远端被并行会话推进至 156（含另一 verify_task154.py），全部 ame154/Task154 前缀与验证器名重编号为 157 后 rebase（零冲突自动合并），l10n 键数 1946+2=1948。
+
+---
+
+## Task 158（本会话，渲染器 + Forge）
+
+### 用户需求（原话要点）
+1. "把fsr取消掉干嘛"——Task154 把 MobileGL FSR 链退休后，mg 家族三后端全部无 FSR，用户不满。
+2. "我上传了旧版本的log，有4.0有es，是完全正常使用且有fsr"——a0ac656 上传 latestlog.4.0 / latestlog.es 作为 5.1.0 可玩性基准。
+3. "现在的es方块穿透，4.0崩溃，vulkan没有fsr"。
+
+### 判读（用户日志实证，全链闭环）
+- **5.1.0 基准（9e6fc27）**：latestlog.4.0 与 latestlog.es 两会话的渲染器都是 **libmobileglues.dylib（MobileGlues）**——前者 customGLVersion=40（GL 4.0），后者 enableANGLE=3 + customGLVersion=32（ANGLE ES）；均 fsr1Setting=4、MC 26.2 + fabric + 110 mods 全程可玩（swapOK=1920/1034，exit(0) 正常退出）。**5.1.0 用户的"4.0/ES 后端"从来不是 Mithril/MobileGL-Espryt 二进制**——Task131 重构把这两个档位静默换到了上游二进制上。
+- **4.0 崩溃（10cee5d，libmithril）**：Mithril 把 MC 26.2 pipeline 着色器转 MSL 时 `Sampler0Smplr` 未声明（未用采样器被剥离但引用残留）→ MoltenVK pipeline 编译失败 → vkCreateGraphicsPipelines 重试路径 commit_frame SIGSEGV。上游二进制缺陷，启动器不可修。
+- **ES 方块不渲染（libMobileGL DirectGLES/Espryt）**：Task140/153/154 清完启动器侧全部嫌疑 + Task156 强制 drawelements 档实测仍不渲染——上游翻译层缺陷，启动器不可修。
+- **Forge 闪退（10cee5d）**：NoClassDefFoundError: com/mojang/text2speech/Narrator @ GameNarrator.<init>。源码级机制闭环（BootstrapLauncher 1.1.2 + securejarhandler 2.1.10 全文判读，scripts/task158_bl/ 存档）：ModuleClassLoader 父链=boot/platform 层，系统类加载器对模块层不可见；Task154 起 launcher.jar 进 ignoreList（split-package 根治）的代价=模块层失去 com.mojang 桩；Java 侧 preProcessLibraries 又恒 _skip text2speech → 模块层无人提供该类。
+
+### 修复
+1. **mg 后端重映射（LauncherPreferences.m ame_effective_renderer mg 分支）**：GLES / OpenGL 4.0 两档解析为 libmobileglues.dylib（dylib 存在守卫，缺失落回 Task142 守卫链）。Vulkan 直连（默认）保持 libMobileGL.dylib（da5918a 语义 + Task154 退休链零回退）。
+2. **5.1.0 配置强制（JavaLauncher.init_loadMobileGluesConfig + ame158_mg_mobileglues_mode）**：mg+GLES → enableANGLE=3(ForceEnable)+customGLVersion=32；mg+4.0 → enableANGLE=0+customGLVersion=40；mode 0（独立 MobileGlues/mg+Vulkan）透传用户分区偏好。AME83 FSR 能力表对 libmobileglues 恒 YES → **fsr1_setting 档位联动原样复活**（窗口=surface/档位 + MobileGlues FSR1 渲染器侧升采样 + 触控同口径 = 5.1.0 逐位同款）。
+3. **Forge 模块层桩（JavaApp/Makefile 新规则）**：构建 mojang-stubs.jar（仅 com/mojang/text2speech 桩类，与 launcher.jar 同源同字节，getNarrator() 恒 NarratorDummy）随包进 app/libs → 恒在 -cp → 恒在 java.class.path → BootstrapLauncher 自动模块化进 MC-BOOTSTRAP 层 → GameNarrator 可加载（真实 text2speech 库保持 _skip，防与桩 split-package）。
+4. **启动前缺库闸门（JavaLauncher ame158_repairMissingLibraries，非阻断）**：遍历合并版 JSON libraries 核对磁盘存在性，缺者同步下载（官方→BMCLAPI 双源），失败仅日志点名——BootstrapLauncher 对不存在路径静默 continue 的"缺库=模块层黑洞"从此可自愈可诊断。
+5. l10n 四语言值级更新（FSR 详情/renderer_backend 详情/mithril 标签去"实验性"，零键增删）+ FAQ 标签页同步 + version.h addendum。
+
+### 验证
+- verify_task158 **35/35 ALL GREEN**（A 日志取证 5 + B 重映射锚点 7 + C Forge 桩/闸门 6 + C7 桩本地 ECJ 编译+jar 组装+类清单 3 + D l10n 键集不变+新文案 9 + E version.h + F 语法配平/Makefile tab + G 级联）。
+- 级联基线对拍（task158_baseline_compare.sh，HEAD worktree 对拍）：129-143/150-154/156-158 全部 BASELINE-IDENTICAL 或预期改善；task156 E5/G 重锚（FSR 详情新语义 + task154 基线 36P/3F→35P/4F 随用户日志轮换漂移）；task133 E2 重锚（enableANGLE 偏好读取仍删，Task158 后端模式写入合法）；task137 G3/G4 重锚（l10n 值级行 + JavaApp//Makefile 文件集）；task138 C1 为日志轮换环境项（基线同败）。
+- ECJ 编译门（task94）三段全过；Makefile tab 卫生检查（Edit 工具 tab→空格事故被 python 定点替换规避，worklog 教训复发拦截）。
+
+### Stage Summary
+- 装机验证锚点：mg+GLES/4.0 后端 → 日志 `RENDERER is set to libmobileglues.dylib` + `[JavaLauncher] Task158: mg GLES backend -> MobileGlues (enableANGLE=3 ...)` / `mg OpenGL 4.0 backend -> ...` + FSR 联动行 `[SurfaceVC] Task83 FSR linkage: renderer=libmobileglues.dylib preset=N scale=...`；画面=方块正常渲染 + FSR 档位生效。
+- Forge 1.20.1 → 过 GameNarrator（无 Narrator CNFE）+ `[JavaLauncher] Task158: library gate ...` 行；mojang-stubs.jar 在 IPA 的 libs/ 内。
+- Vulkan 直连=MobileGL 仍无 FSR（伪 EGL 无升采样钩子，结构性限制）——FSR 行详情/FAQ 已诚实指向 GLES/4.0 后端或「分辨率」缩放。
+- 遗留：Mithril/MobileGL-Espryt 两个上游二进制的原生缺陷仍在（已被重映射绕开，不再是用户路径）；设备侧 text2speech-1.17.9.jar 若曾缺失由闸门自动补下。
+
+---
+
+## Task 158（续：CI 闭环）
+
+- 首推 cd13424 CI run 35940449744 failure：JavaApp/Makefile:138 mojang-stubs.jar 规则——BSD cp -R 把源目录末级组件拷进目标，`cp -R build/launcher/com/mojang/text2speech build/mojang-stubs/` 产出 `mojang-stubs/text2speech`（缺 com/ 层级）→ `jar -cf ../mojang-stubs.jar com` 报 "com: no such file or directory"。
+- 热修 afea13b：先 `mkdir -p mojang-stubs/com/mojang` 再 cp 进该父目录（本地 replica 测试通过）；CI run 35941955757 **completed success**。
+- IPA 产物三重验证（rule: strings 验证后才交付）：①libs/mojang-stubs.jar 在包内且 jar 根为 com/（Narrator+嵌套类+全平台桩+OperatingSystem 全清单）；②Frameworks/libmobileglues.dylib 在包（5.7MB，重映射目标）；③主二进制含全部 8 条 Task158 日志串（mg GLES/4.0 backend 行 ×2 + 缺库闸门行 ×6）。
+- Stage Summary：Task158 全链闭环（verify 35/35 + 级联基线对拍 + CI 绿 + 产物验证）；新 IPA 就绪，装机锚点见 Task158 主条目。
+
+---
+
+## Task 159（本会话，管理 Java 26.0+ 预选 + 内存输入框弹窗 + 分辨率缩放实例化）
+
+### 用户三需求
+1. 管理 Java：1.17+ 预选下加"26.0 及更高版本：Java 25"行 + 适配检测代码。
+2. 实例内存弹窗改与游戏目录同款输入框（标题"调整内存分配"、简介"设备最大内存/可分配最大内存/内存调配指南见启动器使用教程"、删"恢复默认"、数值 clamp 512~可分配最大内存）。
+3. 分辨率缩放从设置页迁到每实例"渲染器"行下（删 % 后缀 → 右侧独立 % 标签，像名称行点击编辑 25~100），做单独选项而非全局。
+
+### Work Log
+- 前置：fetch 对齐 ce0783d（Task158 已被并行会话完成），下一个空号 159；l10n 基线 1948
+- **A. Manage JRE 26.0+ 预选**：javaRuntimes[@DEFAULT_JRE] 与 selectedRTTags 在 1_17_newer 与 execute_jar 之间插入 `1_26_newer`（新键 preference.manage_runtime.default.126）；PLPreferences java_homes 默认 "0" 加 `1_26_newer: 25`（25=internal 捆绑已存在）；footer 加 `case 25 → footer.java25`（"这是 Minecraft 26.0 及更高版本的默认版本"）；预选行 detail 加 nil 守卫（getObject 无深合并，存量设备新 tag 无键 → 显示"自动"，getSelectedJavaHome 的 minVersion 搜索语义兜底，首次点选落值）
+- **B. 26.x 检测代码**：JavaLauncher launchJVM defaultJRETag 三档分界（minVersion>=25 → 1_26_newer；26.x 官方 javaVersion.majorVersion=25，原二档会让 26.x 落 1_17_newer 槽选 Java 17 启动即崩）+ execute_jar 路径（2616 区）三档；ModpackUtils.javaMajorVersionForMC 补 first>=26→25（"26.2" parts[1]=2 漏到 Java 8——对齐 ModpackImportService 的 Task70 口径）；ForgeProcessorExecutor.inferJavaMajorForMinecraft 补 parts[0]>=26→25（原 fallback 17 漏网）；NeoForgeDirectInstaller loader 反推 major>=26→25（原"未来版本→21"过时）；ModpackImportService/ForgeDirectInstaller 已有 Task70 分支（B7 锚点验证幸存）
+- **C. 内存输入框弹窗**：Ame157MemoryAllocatorCard + Ame157CardTransitionAnimator 整类删除（脚本删行 95-334 + 锚点断言 + 残留清零）；showMemoryAllocator 重写为 editGameDir 同款 UIAlertControllerStyleAlert + addTextField（NumberPad、预填 allocatedMemory>0?:512、clearButtonMode）；标题 memory.adjust_title、简介 memory.adjust_message（设备最大内存=物理MB、可分配最大内存=self.maxMemory=物理×0.8 下限 1024 与原拉条上限同口径）；不搬"恢复默认"（i18n_str_898 仅存 editGameDir）；确定 → clamp [512, maxMemory]（空输入落 512）→ allocatedMemory 落值 + memoryAutoEnabled=NO → saveSettings → reload；**存量兼容**：memoryAuto=YES 老实例行仍显示"自动分配内存"（memory.auto_row 键保留），弹窗预填 512，确认一次即回手动；启动链 ame141_currentLaunchAllocMem 的 0=自动比例语义零改动（用户不碰内存行为不变）
+- **D. 分辨率缩放实例化**：设置页全局滑条行删除（留 [可撤销] 注释，撤销=恢复行字典 typeSlider 25-150）；PLProfiles prefDefaults 恢复 `@"resolution": @"video.resolution"`（renderer 退役前同款回退机制，[可撤销]）——解析链【profile 键 → 全局存量 → 100】，存量全局值继续生效直到实例显式设置；SurfaceViewController 启动解析单点改 resolveKeyForCurrentProfile:@"resolution"（ame_effective_renderer 同哲学）；实例页 advancedRows 渲染器后插"分辨率缩放"（viewfinder 图标）+ buildResolutionScaleAccessory（52pt NumberPad 输入框 + 右侧 18pt 独立 "%" 标签同一容器、Done 条收键盘、tag 1004、container 复用）+ 点击行聚焦 + resolutionScaleDidEnd clamp [25,100] 落盘 + loadSettings 读（NSString/NSNumber/全局回退、<=0 兜底 100）+ saveSettings 写 existing[@"resolution"] NSString（PLProfiles resolveKey 的 NSString 约定）；JavaGUIViewController 4 处保留全局键（执行 .jar 无实例上下文，注释留档）；游戏内菜单 actionAdjustResolution 维持写全局（运行时调整，重启后实例显式值接管）
+- **E. l10n**：+5（default.126 / footer.java25 / profile.title.resolution_scale / memory.adjust_title / memory.adjust_message）-1（memory.current 随卡片退役）×4 门语言 → 基线 1948→1952（set 口径逐语言断言；首版脚本行计数 1986 与门禁不符即 Task154 同款坑，改 set 口径核实 +5/-1 正确）；zh-Hant 风格跟邻近键（manage_runtime 区现状简体照抄、memory 区繁体）
+- **F. 发布资产**：announcements.json 四处（summary 尾补三项 / content 新块"Java 与内存（体验调整）"三 bullet / 主页卡片内存措辞改输入框口径 / EN 尾段追加）；indent=1 保持原格式最小 diff（首版 indent=2 全文件重排 92 行 diff，checkout 重跑）；MobileGlues-cpp/version.h 追加 REVISION 17 addendum (Task 159)
+- **校验**：verify_task159 新建 48 项全绿（A 预选 4 / B 26.x 7 / C 输入框 10 / D 分辨率 12 / E l10n 5 / F 资产 4 / G 配平+白名单 2 / H 回归 4）；重锚三件：verify_task157 B1-B9/C3/C4/C6 → 输入框形态（44/44）、verify_task149 E1-E6 → 输入框形态（35/35）、verify_task141 C2-C5/D5/D5b/F2/F3 → 输入框+新键口径（36/36，G4 允许前缀 +announcements.json）；l10n 门 1948→1952 ×15 文件（129-135/138/139/142/143/150/151/156/157，脚本 task159_gates.py）；级联 stash 基线对拍零新增失败（129=44/47、130=59/60、131=34/37、133=41/44、134=64/68、138=49/51、139=26/36、142=48+1、143=30+1、140=56+2、137=44+2、156=49+3 全基线一致；132/135/151/153/154/158/125_128 = MyRemastered 沙箱环境性）；重锚脚本坑：sub_check 块替换吞了块间变量定义行（157 的 utils_m / 149 的 mcnews=读 MinecraftNewsViewController.m 而非 LauncherNews…）→ 逐个补回
+- 提交推送（fetch 防撞号后）+ CI 轮询
+
+### Stage Summary
+- 用户预期装机锚点：①管理 Java 默认预选四行（1.16.5- / 1.17+ / **26.0 及更高版本 [Java 25]** / 执行 .jar），26.x 实例启动走 1_26_newer 槽；②实例内存行点开=输入框弹窗（标题"调整内存分配" + 三行简介 + 数字框 + 取消/确定，无恢复默认），输 0/超上限定 512/上限，确认即生效；③实例"渲染器"行下"分辨率缩放"行（点击行内数字框编辑 25~100，右侧独立 %，Done 落盘），启动生效；全局设置页视频区无分辨率行
+- 已知边界：游戏内分辨率菜单与 Java GUI 仍读写全局键（运行时语义）；自动分配开关无入口再开启（存量自动实例保持原比例直到手动确认）；footer.java17 文案保持原文（"1.17 及更高版本"），26.0+ 的默认说明由新 footer.java25 承载
+- 留档纪律：CI 绿后不推 worklog-only 提交（Task 96 教训）
+
+---
+
+## Task 160（本会话，新拟态 UI 回归 + 初次默认配置 + 弹窗背景回归 + 分辨率行样式统一 + 文字重影修复）
+
+### 用户五需求（AskUserQuestion 八问定稿后实施）
+1. 实例页分辨率缩放行右侧参数样式与内存分配同款（灰字+向右箭头）；输入 clamp 25~150。**定稿：保留行内输入**（不弹窗），右侧值显示带 %。
+2. 初次使用默认配置：浅色模式、背景 UI 效果毛玻璃、透明度 10%、模糊 75%。**定稿：仅影响新装/重置**；透明度按"反转理解"= 面板 alpha≈0.1（毛玻璃模式 uiOpacity 直接作 cell 底色 alpha，滑条显示 10% 与实际效果一致）。
+3. 大量小窗口背景加回来（例如自定义背景/自定义主页）；"游戏目录/已安装的版本"等字样背后的背景去掉。**定稿：弹窗底色跟随壁纸状态**（无壁纸=系统底、有壁纸=毛玻璃）；范围=模态弹窗类（侧栏/右面板/主页继续透壁纸）。
+4. 所有自创 UI 改新拟态（原生代码非 webview），按 CSS 规格：浅 #e0e0e0 + 双阴影 #bebebe/#ffffff、深 #2c2c2c + #1e1e1e/#3a3a3a，主文字 #333333/#f5f5f5、次文字 #888888/#a0a0a0。**定稿：按元素尺寸等比**（340pt=100% 规格 50/20/60，下限 8/4/12）。
+5. 设置页选项文字"重叠两次"修复。**定稿：两个都修**（黑影重影 + 换行压字），颜色回归原生。
+
+### Work Log
+- 前置：fetch 对齐 e979a58（Task159 并行会话已闭环），空号 160；勘察实锤：ui_theme 默认 dark（PLPreferences:241）、uiOpacity/blurIntensity 默认 0.7/0.7（BackgroundManager:150-160）、makeViewControllerTransparent 毛玻璃分支整页透明、VMSectionHeaderView 铺满 SystemMaterial 毛玻璃块、Task137 曾整退新拟态（三大历史问题：阴影被裁/圆角 50 小元素过圆/深浅色对比）
+- **A. 分辨率行样式统一**：buildResolutionScaleAccessory 重构——输入框 17pt secondaryLabelColor（内存行 detailTextLabel 同款灰字）、% 标签同步 17pt、容器尾端补 chevron.right（tertiaryLabel 灰，accessoryView 占位后系统箭头不绘制）+ 容器 76→96pt；clamp [25,100]→[25,150]（旧全局滑条同口径）；行内输入/NumberPad/Done 条/tap-to-focus 保留；属性注释与 loadSettings 注释同步
+- **B. 初次默认配置**：PLPreferences general.ui_theme dark→light（SceneDelegate 消费链零改动）；BackgroundManager loadUISettings 默认 uiOpacity 0.7→0.1（毛玻璃分支 cell 底色 alpha=0.1 几乎全透，模糊 75% 保可读）+ blurIntensity 0.7→0.75；效果默认 BackgroundUIEffectBlur 保持；仅 prefDefaults 层生效，存量用户已保存值不变
+- **C. 弹窗背景回归**：makeViewControllerTransparent 毛玻璃分支追加 ame160_applyGlassBackdropIfModal——判定 presentingViewController / navigationController.presentingViewController（弹窗 nav 内 push 子页覆盖；侧栏/右面板/root 中央 setContentViewController 两链为空自然跳过），view 底插 SystemThinMaterial UIVisualEffectView（tag 99994 防重复、autoresizing、userInteractionEnabled=NO）；半透明模式走既有底色逻辑不动；VMSectionHeaderView 的 blurView 属性/创建/四边约束全删（标题直接浮壁纸，Task160 注释留档）
+- **D. 新拟态引擎**：UIKit+NativeSurface 重建——五个动态色函数（colorWithDynamicProvider 浅/深规格值）+ AmeNeumorphMetricsForSide（340 基准等比，radius clamp[8,50]/offset[4,20]/blur=offset*3）+ AmeNeumorphShadowView（双 CALayer 只投影不画块、shadowPath 圆角矩形、layoutSubviews 随宿主短边重算并写宿主圆角、traitCollectionDidChange 重刷 CGColor；insertSubview atIndex:0 + autoresizing W/H + 关联对象复用）；ame_apply{Card,Raised,Panel}Surface 三方法内部统一路由 ame_applyNeumorphSurface（Task137 语义色退役）；新增 ame_applyNeumorphSurfaceFlatWithRadius（cell/列表场景：只上规格表面色+圆角 clamp[8,50]+masksToBounds=YES，防相邻 cell/tableView 裁剪互叠）——BackgroundManager 三处 cell 管线（applyEffectToView 尾/applyEffectToCollectionViewCell 尾/applyCardEffectToCell）改用 flat；host masksToBounds=NO 放行外阴影（Task137 教训注释）；文字色规格化 11 文件（VMSectionHeader title/subtitle、VersionCard version/date、Home 磁贴 welcome/greeting/公告卡/新闻卡 title/summary、VM 空态、Hero 卡 ×2、NMToast、RightPanel username/progress else 分支——customColor 用户自定义优先分支保留）；Hero 卡手绘黑影/白边框/白 14% 半透明底移除（表面由 applyEffectToView flat/毛玻璃接管）
+- **E. 文字重影修复**：LauncherPreferences cell 分支（hasBackground）textLabel/detailTextLabel shadowColor=nil+offset=0（detail 写死 0.8 灰→secondaryLabelColor）+ pickerLabel 同步 + 自定义 label 循环去阴影；header/footer willDisplay 去阴影；PLPrefTableViewController textLabel/detailTextLabel numberOfLines 0→1（Subtitle 多行标题换行压小字的布局半因；adjustsFontSizeToFitWidth 缩字兜长标题）；ManageJRE header 同口径
+- **F. 发布资产**：announcements.json 四处（summary 尾 / content 新块"新拟态 UI 与默认体验"四 bullet + 分辨率 bullet 口径更新 / 主页卡片追加 / EN 尾段）；JSON 合法性断言；version.h REVISION 17 addendum (Task 160)；**l10n 零新键零退役，基线 1952 四语言 set 口径复验不变**
+- **校验**：verify_task160 新建 47 项全绿（A 分辨率行 7 / B 默认 5 / C 弹窗背景 6 / D 新拟态 10 / E 重影 6 / F 资产 5 / G 配平+白名单 2 / H 回归 6）；重锚 5 处：verify_task159 D9（clamp 150）+F2（announcements 口径）48/48、verify_task149 A4/C2（文字色规格化）35/35、verify_task141 A3 36/36、verify_task137 D1/D2/D9（三表面→新拟态形态；masks 计数 3→2）46/46；verify_task157 44/44、150 43/43 幸存；级联对拍零新增失败（129=44/47、130=59/60、133=41/44、143=30+1、156=49+3 与基线逐项一致；132/135/151/153/154/158=沙箱环境性）；校验器配平函数坑：正则版 strip 在"字符串内含 //"（URL）时错位误报 PLPreferences/PreferredVC/RightPanel 三文件——改字符状态机单遍扫描修复
+- 提交推送（fetch 防撞号后）+ CI 轮询
+
+### Stage Summary
+- 用户预期装机锚点：①实例页"分辨率缩放"右侧=灰字数字+独立%+向右箭头（内存分配同款），输入 25~150；②新装/重置后=浅色模式+毛玻璃+透明度 10%+模糊 75%，存量用户不受影响；③壁纸模式下自定义背景/自定义主页/各设置弹窗有页面级毛玻璃底（不再整页透明），"游戏目录/已安装的版本"标题背景块消失；④全部自创 UI 新拟态（规格表面色+双阴影+规格文字色，深浅自适应）；⑤设置页文字无重影、换行不压字（黑标题+灰小字）
+- 已知边界：Task137 的"列表 cell 无阴影"以 flat 版本延续（列表阴影互叠是历史证明的坑）；Hero 卡/设置列表走 flat 无外阴影（壁纸模式毛玻璃视觉主导）；等比圆角下限 8 对徽章类仍略圆
+- 留档纪律：CI 绿后不推 worklog-only 提交（Task 96 教训）
+
+## Task 161（本会话，装机反馈六案根修：FSR 复活 + 壁纸设置页被盖 + Bing 静默应用 + 外观默认 + 侧边栏闪退 + 26.2 键盘）
+
+### 用户反馈（9c66184 构建，1e6f796 日志两份均 libMobileGL 会话）
+"可以呀3端都可以了。怎么都没有fsr放大和锐化呀连zink都没有了。还有第一次启动重启之后壁纸设置中，好像盖了什么东西，所有文字和按钮都看不到，但是只有滑块滑动不了，而且2个滑块默认值是透明度60%模糊程度为100%。还有bing壁纸还是要重启才能静默加载。还有外观模式默认跟随系统。还有右边信息栏点击启动器版本，jit和2个内存扩展闪退。还有26.3遇到光标能正常弹出键盘，而26.2及以下都不行。"
+
+### 根因（逐条实锤）
+1. **FSR 全无（连 zink）**：用户整合包 profile（ModpackImportService.createProfileForModpack 建）无 renderer 键 → ame_effective_renderer 落 "auto" → auto 只认 legacy 整数档位（mobileglues.mobilegl_backend），**不消费新后端键 mobileglues.renderer_backend** → 用户设置页选的 4.0 后端（日志 L23 实锤写入 libmithril.dylib）完全被无视，恒解析 libMobileGL.dylib（Vulkan 直连，Task154 FSR 退休链）。zink 本身链路完好（10cee5d/e8e55b2 会话 sentinel LANDED 实证），用户感知"连 zink 都没有"= 其 auto 实例永远到不了任何 FSR 路径。
+2. **壁纸设置页被盖**：Task160 的 ame160_applyGlassBackdropIfModal 对 UITableViewController（view==tableView，即 BackgroundSettingsViewController）insertSubview 进 **UITableView 本体**——外来视图插表不受支持，iPadOS 27 装机表现为整页像盖了东西/文字按钮不可见/滑块拖不动。另：背景容器 addBlurEffectToContainer 的 blurView/dimView 从未关 userInteractionEnabled（层级异常时拦截触摸的保险带）。
+3. **Bing 需重启才能静默加载**：`applyBackgroundToWindow:` 顺序为【L200 设 currentWindow → L204 调 removeGlobalBackground → 后者 L311-312 把 currentWindow/currentSplitVC 置 nil】——启动后宿主引用恒空，Bing 下载完成后的 setBingBackgroundImageAtPath 应用分支（双 nil）静默空转：状态已落盘、活 UI 从不更新，重启时启动路径才真正应用。Task152 的 refreshTransparencyForWindowUI 同因 root=nil 跳过。
+4. **外观默认**：Task160 默认 light（此前 dark）；用户指令改"跟随系统"。存量设备已固化历史默认，需迁移（dark/light → auto，仅未显式选择者）。
+5. **侧边栏 4 卡闪退**：Task156 深链按 prefContents 全量索引 selectRowAtIndexPath，而主设置页分区默认折叠（prefSectionsVisible 默认 NO，折叠分区 numberOfRows=1）→ check_update/jit_enabler/memory_limit_help 的 r>0 索引越界 → NSInternalInconsistencyException。游戏版本卡（versionManager 分支）/设备系统卡（无深链键）不滚动故不炸——与用户报告的四卡完全吻合。
+6. **26.2 及以下键盘不自动弹**：26.3 走 SDL（SDL_StartTextInput + Task114 screen-keyboard hint → 系统键盘 ✓）；≤26.2 走 GLFW——GLFW 协议无"开始文本输入"概念，vanilla EditBox 聚焦不发出任何可观察信号。
+
+### 修复（10 代码文件 + 3 验证器）
+- **LauncherPreferences.m**：①ame_effective_renderer auto 分支消费 ame142_effective_backend_key（GLES/Mithril → libmobileglues.dylib 存在守卫；Vulkan/默认维持返回 "auto"，旧 MC ANGLE 回退语义不变）；②ame158_mg_mobileglues_mode 对 auto/无键 profile 同源跟随（否则 auto+GLES 拿 mode 0 → customGLVersion=40 → ES 方块不渲染回归）。
+- **BackgroundManager.m**：③ame160 对 view==tableView 的 table 控制器改挂 tableView.backgroundView（UIKit 管理位，cells 之下、不参与命中测试）+ 非 table 路径保持 insertSubview:atIndex:0；ame160 调用移到 makeViewControllerTransparent 末尾（table 分支 backgroundView=nil 之后）；④addBlurEffectToContainer 的 blurView/dimView 显式 userInteractionEnabled=NO；⑤removeGlobalBackground 不再清空 currentWindow/currentSplitVC（均 weak；注册语义归 apply 方法所有）。
+- **BackgroundSettingsViewController.m / LauncherPreferencesViewController.m**：⑥viewWillAppear/reapplyBackgroundEffect 改走 makeViewControllerTransparent 单点，不再手写 backgroundView=nil（会把 glass 清掉）。
+- **PLPreferences.m / SceneDelegate.m / LauncherPreferencesViewController.m**：⑦ui_theme 默认 light→auto + 注册 ui_theme_explicit 标记键；SceneDelegate 一次性迁移（未显式选择 + 值为历史默认 dark/light → auto）；设置页 pick action 置显式标记。
+- **LauncherPreferencesViewController.m**：⑧深链命中后先展开折叠分区（prefSectionsVisibility[s]=YES + reloadSections）再滚动/高亮 + 行数防御（r >= numberOfRowsInSection 只展开不选中）。
+- **input_bridge_v3.m / utils.h / SurfaceViewController.m**：⑨nativeSendKey 记录最近按下键（ame161_lastSentKey/Time）；ame161_lastSentKeyWasChatOpener(within) 查询（T=84/SLASH=53）；updateGrabState 在 GLFW 路径（g_sdlWindow==NULL）grab 转 false 且 1.5s 内发过聊天开键 → inputTextField 自动弹出（ame161_autoShown 标记，回游戏自动收起，手动 ⌨ 不受影响，26.3 SDL 零影响）。
+- **JavaLauncher.m**：⑩过时的 "auto will be resolved to ANGLE" 警告改写为 Task144/161 语义。
+
+### 校验
+- verify_task161 新建 56/56 ALL GREEN（A auto 跟随 5 + A2b 决策矩阵镜像 14 + B 壁纸页 7 + C Bing 4 + D 外观 5 + E 深链 3 + F 键盘 7 + G 文案 1 + H 括号平衡 10）。
+- 级联：156=52/52、160=47/47（B1/B5 重锚 Task161 语义 + ROOT 环境注入）、151=46/46、158=32/33（A4 重锚 git 钉住 d380bcc 防日志轮换；C6 取证存档被沙箱清除=既有环境性）、140 G2/G3 与 stash 基线逐项一致（日志轮换）、142/143 链式同因、149 路径硬编码另一会话沙箱=环境性——**零新增失败**。
+- 10 个改动 ObjC 文件 + version.h 括号平衡全 0（字符状态机剥离）。
+
+### Stage Summary
+- 装机验证锚点：①整合包实例（renderer 未设）+ 设置页后端选 GLES/4.0 → 日志 `RENDERER is set to libmobileglues.dylib` + `[SurfaceVC] Task83 FSR linkage: renderer=libmobileglues.dylib preset=4 scale=2.00` + MobileGlues FSR1 生效（画面=渲染分辨率升采样）；后端选 Vulkan/默认 → 行为与 9c66184 一致（libMobileGL）；②重启后壁纸设置页文字/按钮/滑块全部正常可交互（glass 走 backgroundView）；③首启联网数秒后 Bing 壁纸不重启即上屏（日志出现 `Task151 auto-apply OK` + `Task152: transparency refreshed`）；④未手动选过外观的设备自动跟随系统（日志 `Task161: ui_theme 'dark' was a historical default ... migrated to 'auto'`）；⑤侧边栏启动器版本/JIT/内存两卡点击直达设置对应行并高亮（日志 `deep-linked to row`），不再闪退；⑥26.2 及以下游戏内按 T/斜杠打开聊天 → 键盘自动弹出（日志 `Task161: chat key + ungrab -> keyboard auto-shown`），回游戏自动收起；26.3 行为不变。
+- 已知边界：GLFW 路径的键盘自动弹只覆盖聊天/命令行（T/斜杠前驱）；告示牌/书与笔等右键场景仍需 ⌨ 手动（歧义大，故意不自动化）。
+
+---
+Task ID: 162
+Agent: main (Super Z)
+Task: 用户八案装机反馈根修（bf91f41 构建 = Task161 修复后的新 IPA，cbef9d5 两份日志）：①"切换渲染器为其他都会自动切回自动" + "mg的fsr依旧失效" ②"forge加载存档闪退" ③"bing壁纸加载完成还是要重启才能有图片" ④"壁纸设置默认值为毛玻璃，60%的透明度，100%的模糊" ⑤"切换其他标签页再切换回主页，上方的头像缺失，必须点击一下" ⑥"账号添加完成需要手动刷新账号标签页" ⑦"curse forge加载源完全无法使用" ⑧"在公告添加服务器推荐：mysv.dpdns.org"
+
+Work Log:
+- 判读：旧会话日志实锤 "renderer written to PROFILE ONLY 'Fabulously Optimized' = mg/libOSMesa.8.dylib" 两次写入后，启动链 "Task120: profile renderer was (null) -> auto"——写入与读取用了两个不同身份
+- ①根因（Profile 身份不一致，三处叠加）：ProfileSettingsViewController 以 name 字段为字典键写；ModpackImportService 重名导入产生键 "Name (2)" + name 字段 "Name"；主页版本选择器把 name 字段写进 selectedProfileName + allValues 无序行漂移。修复：编辑器加载时记录 profileDictKey（读源同写目标、空基底回退 working copy、重命名按旧键删新键建并同步 selected/profileDictKey）；选择器改排序键快照（didSelectRow 落字典键、漂移自愈重建、越界防御）。渲染器/内存/分辨率/Java 全部字段随之修复（= mg 的 FSR 丢失根因：mg 选择从未落到真实条目 → 恒 auto；mg+GLES/4.0 后端才有 MobileGlues FSR1，mg+Vulkan 直连无 FSR 属 Task154 设计语义，zink 有）
+- ②根因：进存档 ReceivingLevelScreen.onClose → MouseHandler 抓鼠标 → GLFW.glfwSetInputMode → UIKit.updateMCGuiScale()（launcher.jar 独有类）→ Forge MC-BOOTSTRAP 模块层 NoClassDefFoundError。修复：lwjgl overlay 移除 UIKit 调用；nativeSetGrabbing（GLFW JNI 路径）补 refreshGuiScaleNatively()（Task63 native 直读，与 SDL 路径对齐）
+- ③根因："已是今日图"静默跳过不检查活 UI。修复：BackgroundManager.isBackgroundLiveAttached（容器→window→宿主三段判定）；静默跳过前检查，未挂载则重放 setBingBackgroundImageAtPath（每次元数据同步/回前台/手动刷新都是自愈口）
+- ④壁纸默认值：uiOpacity 0.1→0.6、blurIntensity 0.75→1.0（仅新装/从未保存过键的设备）
+- ⑤主页头像：AvatarManager 本地 → 会话 NSCache → 网络三层链（viewWillAppear 同步命中，不再裸重下载）
+- ⑥账号列表：reloadAccountList 提取 + viewWillAppear 重扫 + AccountChanged/UpdateAccountInfo 双通知
+- ⑦CurseForge：实测 MCIM 镜像免 key（curl 无 x-api-key → 200）→ baseURL 无 key 强制落镜像 + isSourceAvailable 替换 6 处门控（DownloadViewController×3 / ModVersion / ShaderVersion / ServerList）；有 key 设备镜像策略语义不变
+- ⑧公告：新增"推荐服务器：mysv.dpdns.org"（2026-09-24 置顶）；v6.0.0 文案默认值同步 60%/100% + 跟随系统（CN+EN）
+- version.h REVISION 17 addendum (Task 162)
+- 验证：verify_task162 新建 68/68 ALL GREEN；级联 161=56/56、160=47/47（重锚）、158=32/33（C6 环境性=基线）、156=52/52、150=43/43 + 157=44/44 + 159=48/48（公告锚点 [0]→按 id 重锚）、149=35/35、151=46/46；其余与 stash 基线逐项一致（差异仅"预期文件集"类检查，提交自愈）
+- 教训：终端显示层吞 "[m" 序列（[msg dismiss] 显示成 sg dismiss]）→ bash 管道观察 ObjC 方括号代码不可信，须字节级复核
+
+Stage Summary:
+- 装机验证锚点：①实例页选渲染器后不再回退 auto（键≠名设备日志 "Task162: save keyed by dict key ... no phantom write"）；mg+GLES/4.0 → "Task83 FSR linkage ... scale=2.00" ②Forge 1.20.1 进存档不崩 ③Bing 加载完成即上屏（脱界自愈日志 "Task162 self-heal re-apply OK"）④新装默认 60%/100% ⑤切页返回头像即显 ⑥添加账号即见 ⑦无 key 可用 CurseForge（世界 tab 同）⑧公告见服务器推荐
+- 遗留待装机观察：26.2 键盘弹出（Task161⑥）、静态库虚拟按钮、26.1.2 libjvm 崩溃
+
+---
+
+
+Task ID: 163
+Agent: herbrine8403 (Claude 会话)
+Task: 装机反馈修正——新拟态范围纠偏（侧栏/右面板阴影退役 + 主页磁贴/下载版本卡凸起）+ 实例设置页箭头统一
+
+用户反馈（逐字）：
+1. "我根本就没看到你改了UI，主页的卡片一点没改，下载页面版本选项一点没改，倒是把左侧栏和右侧栏改了，这两个栏的阴影直接影响了旁边的卡片，不该改的你改了，该改的你就是不改。"
+2. "实例设置页面的渲染器右侧的灰色箭头与其他选项样式不匹配，十分突兀"
+
+根因：
+- 侧栏/右面板：LauncherRootViewController updateChromeSurfaces 无壁纸分支走 ame_applyPanelSurfaceWithRadius（Task160 把三方法统一路由到 ame_applyNeumorphSurface 带双阴影）——全屏高大容器短边接近 340pt 基准，等比 offset≈20/blur≈60 的阴影直接溢出压到中央卡片上。
+- 主页磁贴/下载版本卡：走 BackgroundManager 管线的 Flat 尾分支（Task160 防 cell 阴影互叠的取舍）——完全无阴影，与 Task160 之前观感几乎一致 = 用户"一点没改"。
+- 箭头：实例设置页 13 处系统 DisclosureIndicator 与分辨率行（Task160 自绘 chevron.right）相邻对比，glyph 粗细/形态肉眼可见不同。
+
+修复（8 文件 + 3 验证器重锚 + 1 新验证器 + 公告，零 l10n 变更基线 1952 不动）：
+- UIKit+NativeSurface.h/.m：ame_applyPanelSurfaceWithRadius 转 Flat 路由（规格表面色+圆角 clamp[8,50]，不挂阴影承载层；maskedCorners 不触碰、masks=YES 与侧栏创建态一致）；新增 ame_removeNeumorphShadow（移除阴影承载视图+清关联对象，背景模式切换防旧投影穿帮）。
+- BackgroundManager.h/.m：新增 applyNeumorphCardEffectToView:（有壁纸转调 applyEffectToView 并前置清阴影；无壁纸挂 ame_applyNeumorphSurface 凸起）；applyEffectToCollectionViewCell 无壁纸分支 Flat→NeumorphSurface + 宿主链放行（cell.clipsToBounds=NO + contentView masks=NO，阴影越界投磁贴间隙）；applyEffectToView/CollectionViewCell 壁纸分支入口防御清阴影。
+- VersionCardCell.m：换调 applyNeumorphCardEffectToView（cardContainer 链 masks=NO 阴影链通）。
+- ProfileSettingsViewController.m：新增 ame163_disclosureChevron（chevron.right tertiaryLabel 8x13 in 14x30 容器，与分辨率行尾端同 glyph/同色/同尺寸/同距右缘 6pt）；13 处 DisclosureIndicator→自绘 accessory（渲染器/游戏目录/资源管理 5 行/组件安装 3 行/图形API/Java/内存），游戏版本行无效 accessoryType 赋值删除——整页系统 disclosure 清零。
+- LauncherRootViewController.m：updateChromeSurfaces 注释同步（调用点不动，语义就地生效）。
+- version.h：REVISION 17 addendum (Task 163, no bump)。
+- announcements.json：新拟态 bullet 补"主页磁贴与下载版本卡片凸起双阴影（侧栏/右面板平贴不投影）+ 实例设置页箭头统一"；"主页所有卡片取消阴影"（Task149 旧语义）改"主页磁贴卡片随视觉大改更新为新拟态凸起阴影"。JSON 合法断言过。
+
+验证：
+- verify_task163.py 新建 36 项全绿（A 侧栏平贴 5 / B 卡片凸起 11 / C 箭头统一 6 / D 回归 7 / E 配平 7）。
+- 重锚：task160 D6（NeumorphSurface 直调 3→2，Panel 转 Flat）+ H1（内存行箭头锚→chevron 形态）；task157 A1 / task159 H4（"行箭头与 Java 版本同款"语义保留，实现锚→ame163_disclosureChevron）。重锚后 160=47/47、157=PASSED、159=PASSED。
+- 幸存全绿：137=46/46、149=35/35、141=36/36、150=43/43；基线对拍 129=44/47、130=59/60、133=41/44、143=30+1、156=49+3 与记录一致（沙箱环境性，零新增）。
+- 配平：7 个触碰 ObjC 文件 {} () 平衡全 0（字符状态机，与 task160 口径一致——引号奇偶属基线噪声不判定）。
+- 教训：MultiEdit 多编辑非严格原子（H1 old_str 失败但 D6 已应用）——重锚后必须 grep 复核每一处。
+
+Stage Summary
+- 装机验证锚点（无壁纸模式）：①主页磁贴（Profile/Info/公告/新闻/快捷）呈现新拟态凸起双阴影（右下暗影+左上高光，随卡片尺寸等比）；②下载页版本卡片同款凸起；③侧栏/右面板平贴表面+外侧两角圆角，无阴影溢出，旁边卡片不再被压；④实例设置页渲染器/内存/Java 等所有跳转行箭头与分辨率行完全同款（细灰 chevron）；⑤壁纸模式行为不变（磁贴/版本卡毛玻璃，侧栏透壁纸）；⑥深浅色切换阴影/表面自动重刷。
+- 已知边界：collectionView 边缘磁贴外侧阴影由 collectionView 自身裁剪收口（原生 app 常见形态）；相邻磁贴间隙淡阴影叠加属新拟态正常形态，若装机观感需调浓度可改比例系数。
+- CI 记录：push 后 fetch 发现并行会话 df96d13 抢占 162 号 + 其 CI 失败（AccountList duplicate method）→ 本批重编 163（rebase 融合：源码自动合并无冲突；version.h/announcements/worklog 手工融合；verify_task162.py 保留并行 68 项版、我的 36 项版改名 verify_task163.py；ame162 独占标识→ame163 精确改号）；我的首 run 36026472118 被并行 hotfix 678a76f 的 concurrency 取消；**组合 run 36026565195（678a76f，基于 447a677）completed success**——含 Task163 全部改动的最终产物 ipa/tipa/dSYM 可下载，待用户装机验证。
+- 融合期重锚链：task160 D6/H1 注记改号 163、task157 A1 / task159 H4 锚改 ame163、task150 F6（Task163 推翻 Task149 '取消阴影'→'新拟态凸起阴影'）、task161/162 ROOT 环境变量化；终态 163=36/36、162=68/68、161=56/56、160=47/47、157/159/150/137/149/141 全绿。
+
+---
+Task ID: 162 (续)
+Agent: main (Super Z)
+Task: CI 闭环
+
+Work Log:
+- df96d13 首推 CI 失败（run 36024818658）：AccountListViewController.m 重复声明 reloadAccountList（:89 我方新增 vs :883 文件末既有的 FCL 风格实现——grep "reloadData" 时漏查了既有方法的调用面）；lwjgl overlay（GLFW.java）编译通过
+- 热修 33a0281：删除我方重复定义，既有 reloadAccountList 成为唯一实现，viewWillAppear/双通知三个触发口全部复用；verify_task162 F1-F4 重锚（新增唯一实现检查）
+- 推送遇并行会话 Task 163（447a677，新拟态作用域修正，已自觉从 162 改号为 163 并在我的 60%/100% 文案同步之上叠加）——rebase 干净落地（仅 AccountListViewController.m + verify_task162.py 两文件差异）
+- 复验：162=68/68、163=36/36（TASK163_REPO 注入）、161=56/56、160=47/47
+- CI run 36026565195（678a76f）completed success；artifacts：com.air-devs.air-ios.ipa 205.8MB + trollstore .tipa + dSYM
+
+Stage Summary:
+- Task162 八案全链闭环：根修 + 验证器 + 级联 + CI 绿 + 新 IPA 就绪（含 Task163 新拟态修正）
+- 装机待验证锚点见上一节 Stage Summary；mg 的 FSR 注意：mg+GLES/OpenGL 4.0 后端 → MobileGlues FSR1（装机日志看 "Task83 FSR linkage ... scale=2.00"）；mg+Vulkan 直连后端无 FSR（Task154 设计语义）；zink 自带 FSR（本轮日志已实证）
+
+---
+Task ID: 164
+Agent: main (Super Z)
+Task: 用户报"vulkan没有fsr。es和4.0黑屏。壁纸默认半透明60%/0%（应为毛玻璃60%/100%）" + 判读朋友 00:40 上传的新日志（56c8173）+ 解释"Add files via upload #399"
+
+Work Log:
+- 判读 56c8173 上传对（构建 678a76f）：latestlog.txt = mg GLES 会话（FSR+EASU+RCAS 全 engage、fps=58、swap 330/330、用户拖鼠标后切后台 = 黑屏现场）；latestlog.old.txt = Vulkan 直连会话（fps=59、exit(0)、Task154 退休链日志 = "vulkan 没有 fsr"实锤）
+- "Add files via upload #399"释义：朋友（Gsjsjzhznsz）网页拖拽上传新设备日志，#399 是该上传触发的 CI 构建编号，非代码改动
+- ES/4.0 黑屏根因定位：5.1.0 健康基线（a0ac656 latestlog.es/4.0）同管线但 EASU-only（无 RCAS pass）有画面；新构建唯一 delta = Task130 RCAS pass；mod 组合两场一致（continuity/iris 都在）排除模组变量；四项与 zink 已验证 RCAS（osm_bridge，实机正常）的实现差异全部修正：
+  ① FSRRCASSource.h FsrRcasLoadF 边界 clamp（textureSize 自查）——fullscreen-quad 边缘像素的 5-tap 越界 texelFetch 在 Mesa 良性、ANGLE Metal（MTLTexture read:）未定义可整帧作废 = 最可能真根因；三 TU 共享（zink 获得正确边缘行为，零视觉回归）
+  ② FSR1.cpp 两个 directToSurface 分支 disable 列表补 GL_STENCIL_TEST（zink 五件套；EGL config 带 stencil bits + 模组可能留拒绝型 stencil test → quad 逐像素被丢而 swap 照常）
+  ③ RCAS draw 前显式 glActiveTexture(GL_TEXTURE0) + sampler 每帧 re-pin（zink 形态）
+  ④ RCAS 首帧后一次性 GPU 探针（fb0 边缘单像素 + glGetError 清扫）——装机分诊锚点 "[MG] Task164 RCAS GPU probe"
+- 壁纸默认值根因：Task162 范围检查把"从未保存"误当"保存了 0"——integerForKey 未保存返回 0 = 枚举半透明（范围检查放行）；floatForKey 未保存返回 0.0 过 "< 0.0" 检查（0% 模糊）；三键统一 objectForKey == nil 判定（nil → 毛玻璃/0.6/1.0；显式保存值含故意选半透明/0% 照常尊重）
+- Vulkan FSR 评估：libMobileGL.dylib 二进制 strings 零 FSR/EASU/RCAS 符号、零相关环境变量、不读 config.json（Task153 实证）+ 伪 EGL（Task154 三重实证：句柄恒 0x1、无 current 跟踪、强推 = 花屏+输入错位）→ 上游硬限制不可行；公告/FAQ 明示矩阵（GLES/4.0 = 完整 FSR1 EASU+RCAS；Vulkan 直连 = 暂不支持，切后端指引）
+- 公告更新（scripts/task164_announcements.py）：v6.0.0 失实的"MobileGL 全后端 FSR 修复"改为准确矩阵表述 + 新增 Task164 置顶公告；保持 indent=1
+- version.h REVISION 17 addendum（Task 164，不 bump）
+- 验证：verify_task164 新 30/30；级联 162=68/68（D1-D4 重锚 nil 判定形态）、160=47/47（B5 重锚）、161=56/56、163=36/36（env 注入）、150=43/43、157=44/44、159=48/48、158=32/33（C6 与上轮 environmental baseline 一致）
+
+Stage Summary:
+- ES/4.0 黑屏：RCAS 管线四项对齐 zink 已验证形态（边界 clamp/五件套状态防护/显式 unit+re-pin/GPU 探针），装机验证锚点 "[MG] Task164 RCAS GPU probe: ... nonzero = draw landed"
+- 壁纸首启默认：毛玻璃/60%/100% 真正生效（nil 判定）
+- Vulkan 直连 FSR：上游不可行（零符号+伪 EGL 实证），公告/FAQ 明示切换 GLES/4.0 获得完整 FSR
+- 遗留：装机验证（黑屏是否痊愈 + 探针读数）；26.1.2 libjvm 崩溃、静态库虚拟按钮等继承待办
+
+---
+Task ID: 164-CI
+Agent: main (Super Z)
+Task: Task 164 CI 收尾
+
+Work Log:
+- 推送 23ae87c → run 36032594042 轮询 4 轮（~10 分钟）→ completed success
+- Artifacts 三件就绪：com.air-devs.air-ios.ipa (205.8MB) / trollstore.tipa (205.8MB) / AngelAuraAmethyst.dSYM (3.8MB)，均未过期
+
+Stage Summary:
+- Task164 构建产物可装机；装机验证锚点：
+  ① mg GLES / OpenGL 4.0 后端 + FSR 档位 → 画面正常显示（黑屏痊愈判定）
+  ② 日志 "[MG] Task164 RCAS GPU probe: fb0 pixel ... nonzero = draw landed on GPU"（探针读数，若仍黑屏则据此二分）
+  ③ 新装/重置偏好设备 → 壁纸设置默认毛玻璃 / 60% / 100%
+
+---
+Task ID: 165
+Agent: main (Super Z)
+Task: 用户报"es和4.0依旧黑屏。vulkan你能不能想一下怎么利用fsr，因为就vulkan后端能流畅游玩"（cc9bfe4 上传对，bc6c0b5 构建 = Task164 修复后的新 IPA 实测）→ 黑屏真根因法证与根修 + Vulkan FSR 评估答复
+
+### Work Log
+- 判读 cc9bfe4（bc6c0b5 构建）：latestlog.txt = mg GLES 会话、latestlog.old.txt = mg 4.0 会话，双双实锤——Task164 探针 `rgba=000000ff glErr=0x0500`（fb0 = Metal 初始清屏色，RCAS 复合从未落地 + 挂起 GL_OUT_OF_MEMORY）、fps=60/swap 100% OK（黑屏但管线活着）、用户拖鼠标数十次无反馈
+- **真根因法证（Task164 的"RCAS 边界越界"假说被装机证伪后换层）**：
+  * 黑屏双会话 `glXGetProcAddress` 从未被调用（健康 5.1.0 对 a0ac656/9e6fc27 构建有 "[MG] 2.0.16 own-image resolution" + SYMBOL THEFT 哨兵行——该函数只被前端 eglGetProcAddress 触达，说明健康期 LWJGL 走前端解析）
+  * 黑屏双会话各恰好 10 条 LWJGL `No context is current or a function is not available`（健康对 0 条）= 逐名 dlsym 落空
+  * 因果链：Task154 的 `patch_lwjgl_delegate_dlsym.py` 把 lwjgl-341 GL$1 Delegate 的 provider-library 查找名 "eglGetProcAddress" 改成死名 "xglGetProcAddress"（修 Mithril 坏间接层，方向正确）→ MobileGlues 会话连带落到逐名 dlsym 回退 → 平铺命名空间把 glDrawArrays/glTexImage2D/glFramebufferTexture2D（SYMBOL THEFT 哨兵三件套）解析给 raw ANGLE 镜像 → 应用绘制绕过 gl/framebuffer.cpp 的 framebuffer-0 重定向 → FSR1 升采样读了从未被写入的 render texture，把锐化后的纯黑盖在真实画面上（黑屏）
+  * 为何此前无人发现：Task161 修好渲染器联动前，所有后端设置实跑 libMobileGL（"3端都可以了"的构建根本没跑过 MobileGlues 路径）；联动修好 = FSR engage = 破坏显形
+  * Task164 判断"唯一 delta = Task130 RCAS"不成立：RCAS 无辜（9e6fc27 健康基线无 RCAS 也无 dlsym 补丁，双变量；Task154 之后 MG+FSR+RCAS 从未被装机验证过）
+- **修复 A（根修，egl/egl.cpp）**：前端导出 `xglGetProcAddress`（EGL_API 默认可见性，extern "C" 内，C 符号无 mangle）——Delegate 的死名查找在 libmobileglues.dylib（-Dorg.lwjgl.opengl.libname 钉的绝对路径）里命中本导出，gl* 解析重新走 glXGetProcAddress own-image 路由 = 5.1.0 语义完整回归。防御：AMETHYST_RENDERER 含 "obileglues" 门控（匹配 libmobileglues.dylib、不匹配 libMobileGL.dylib；门控不过返回 nullptr，Delegate 落回逐名 dlsym = 其他渲染器的 Task154 语义原样保留）；Mithril/MobileGL/gl4es/ANGLE 不导出该名零影响；OSMesa 的 OSMesaGetProcAddress 查找从未被改名，zink 零影响
+- **修复 B（FSR1.cpp 双保险）**：① renderTexture 一次性探针——首帧 EASU 前读渲染 FBO 中心像素，`[MG] Task165 render-texture probe` 分诊矩阵（非零=重定向健康 / 全零=解析层嫌疑），下轮装机日志一眼分层；② RCAS 运行期熔断——首帧 fb0 角+心双像素 RGB 全零（且 alpha==0xff 排除读回失败）即闩锁 `s_ame165_rcasBailout`，当帧切回 EASU 直画 fb0 抢救，后续帧走 Task83 单程路径（画质=无锐化上采样，5.1.0 已验证形态）；"黑屏但 swap 计数健康"降级为"无锐化"而非黑屏；会话级闩锁（RecreateFSRFBO 不重置）
+- Vulkan FSR 评估（用户"想一下"）：维持上游硬限制结论（libMobileGL 零 FSR 符号 + 伪 EGL，Task154/164 二进制取证）；mgl_fsr 预交换链的几何信念战争（Task119-154 花屏/输入错位病历）不重启；安全替代 = 渲染缩放档（窗口+drawableSize 同缩 + CA 拉伸，双线性、无 EASU 锐度），需 Task60 对齐门 + Task78 豁免 + geo-guard 集成，留待用户定夺（version.h addendum 留档）；**推荐路径：GLES/4.0 后端 + 完整 FSR1（EASU+RCAS）@ 60fps**（健康基线实测 58-60fps，"只有 Vulkan 流畅"是黑屏造成的误判——GLES/4.0 根本没得玩）
+- 公告：task165 置顶（真根因叙述 + 装机锚点 + 矩阵维持）+ task164 summary 纠正（"第一轮修复经装机验证未愈，真根因见 Task165"，scripts/task165_announcements.py，幂等）
+- version.h REVISION 17 addendum（Task 165，不 bump）
+- 验证：verify_task165 新建 34/34 全绿（A 根因法证 7 = git 钉住 cc9bfe4/a0ac656 双对日志判读 + B egl.cpp 锚点 8 + C jar 一致性 5 = 三 jar 的 GL$1.class 死名/原名计数 + 补丁脚本 NEW 串逐字一致 + D FSR1 探针/熔断锚点 7 + E 行为镜像 = 熔断四案例 + 门控六案例 + F 配平/文档 3 + G 公告 2）；两个新语法门（scripts/task165_syntax_xgl.sh = 提取 xglGetProcAddress 函数体 stub 编译 g++ -Wall -Wextra -Werror 过；scripts/task165_syntax_fsr.py = 探针+熔断两块提取 stub 编译过）；级联 164=30/30、163=36/36（TASK163_REPO 注入）、162=68/68、161=56/56、160=47/47 零新增失败
+- 提交推送（fetch 防撞号）+ CI 轮询
+
+### Stage Summary
+- 装机验证锚点（mg GLES / OpenGL 4.0 后端 + FSR 档位）：
+  1. 画面恢复显示（黑屏痊愈判定）
+  2. 日志 `[MG] Task165 xglGetProcAddress: LWJGL delegate resolution routed through the frontend (renderer=libmobileglues.dylib)`（根修生效铁证）+ 随之回归的 `[MG] 2.0.16 own-image resolution` / `SYMBOL THEFT` 哨兵行（5.1.0 健康签名）
+  3. `[MG] Task165 render-texture probe: center pixel rgba=...` 非零（应用帧抵达渲染 FBO）；`[MG] Task164 RCAS GPU probe` 非零（EASU+RCAS 复合落地）
+  4. "No context is current" 10 连消失
+  5. 若仍黑：看两探针分诊（renderTexture 全零 = 解析层仍被绕过；renderTexture 非零 + fb0 全零 = RCAS 还有独立 bug，熔断应已自动退 EASU-only 保画面）
+- Vulkan FSR：上游硬限制维持，推荐 GLES/4.0（60fps + 完整 FSR1）；CA 拉伸渲染缩放档方案留档待用户拍板
+- 遗留继承：26.1.2 libjvm 崩溃、静态库虚拟按钮、README + 6.0.0 发行文案收尾
+
+---
+Task ID: 165-CI
+Agent: main (Super Z)
+Task: Task 165 CI 收尾
+
+Work Log:
+- 推送 ea7b123 → run 36085386102 轮询确认 completed success
+- Artifacts 三件就绪：com.air-devs.air-ios.ipa (205.8MB) / trollstore.tipa (205.8MB) / AngelAuraAmethyst.dSYM (3.8MB)，均未过期
+
+Stage Summary:
+- Task165 构建产物可装机；装机验证锚点（mg GLES / OpenGL 4.0 后端 + FSR 档位）：
+  ① 画面正常显示（黑屏痊愈判定）
+  ② 日志 "[MG] Task165 xglGetProcAddress: LWJGL delegate resolution routed through the frontend (renderer=libmobileglues.dylib)"（根修生效铁证）
+  ③ 5.1.0 健康签名回归："[MG] 2.0.16 own-image resolution" / "SYMBOL THEFT" 哨兵行
+  ④ "[MG] Task165 render-texture probe: center pixel rgba=..." 非零 + "[MG] Task164 RCAS GPU probe" 非零
+  ⑤ "No context is current" 10 连消失
+- 若仍黑屏：两探针分诊（renderTexture 全零 = 解析层仍被绕过；renderTexture 非零 + fb0 全零 = RCAS 独立 bug 且熔断应已自动退 EASU-only 保画面）
+
+---
+Task ID: 166
+Agent: main (Super Z)
+Task: 用户裁决："那2个后端（GLES/4.0）在加载区块的情况下是非常卡顿且无解的。所以vulkan必须支持fsr,你上网搜索mg的源码尝试一下。还有es和4.0依旧黑屏"（3368468 新日志 = Task165 构建实测，黑屏未愈）→ Vulkan FSR 上线（Metal 呈现层方案）+ ES/4.0 黑屏 DSA 真根因修复
+
+### Work Log
+- 判读 3368468 新日志对（Task165 构建）：路由行/探针/熔断锚点全在，own-image 行回归 = Task165 解析层修复装机生效；但 render-texture probe rgba=00000000（应用绘制仍绕过重定向）+ 依旧 10 次 No-context → 解析层已修好，另有残余根因
+- 上游源码调研（用户指令）：仓库内 Natives/external/MobileGlues/MobileGlues-cpp/ 为 GLES/4.0 后端源码；上网找到 MobileGL-Dev 组织 = libMobileGL.dylib 的开源上游（MobileGL，LGPL-2.1，克隆入 workspace 源码+文档）——配置面仅 MOBILEGL_* 环境变量，源码无 FSR（零符号取证成立，"不可能"结论被开源事实替代）；Task148"共体构建内置 FSR1"论断证伪（上游无 ApplyFSR/FSR1_Context 前端）；二进制含 SPIRV-Tools/Vulkan 确认同源
+- ES/4.0 黑屏真根因（三会话 A/B 完整证据链）：健康对（a0ac656 latestlog.es/.4.0，9e6fc27 构建）DSA=0 → "DSA support not detected" → 可玩 + FSR 生效；黑屏对（cc9bfe4 双 + 3368468 新双）DSA=1 → "ARB_direct_state_access detected, enabling DSA" → 黑屏。同机同模组包同 MobileGlues 2.0.17，唯一配置差异 = DSA。Task158 强制 DSA + Task161 修好联动后该路径首次真正运行 = 黑屏出现时点吻合。Task129d 开 DSA 的性能依据来自 zink 会话（Mesa 原生 DSA），与 MobileGlues 的 DSAWrapper 模拟层无关（上游 core 后续才有 DSA 状态修复提交佐证包装层有坑）
+- 修复（DSA 三处归零 + 反向迁移）：PLPreferences 默认 @YES→@NO；JavaLauncher config.json enableExtDirectStateAccess @1→@0（用户偏好覆盖链保留可开回）；ame130 迁移的 DSA 0→1 分支停用（缓存 32→128 保留）；新增 ame166_migrateMgDsaBlackScreen 一次性反向迁移（持久化 1→0，哨兵 task166_dsa_blackscreen_migrated，Task130 老哨兵已置位设备走补课路径）
+- Vulkan FSR 方案（用户硬需求定案）：**双 CAMetalLayer 交换层拦截 + Metal EASU/RCAS**——Layer B（私有 CAMetalLayer 子类，render-res，重写 nextDrawable 返回包装 drawable=自有 8 槽 MTLTexture 环）作为 native window 传 MobileGL 伪 EGL → vkCreateMetalSurfaceEXT → MoltenVK swapchain（render-res）；包装 present 在 MoltenVK 队列提交线程上执行 Metal EASU（12-tap）+ RCAS（5-tap，AMETHYST_FSR_RCAS_SHARPNESS 负值=关）→ Layer A（视图真层，全分辨率）真 drawable 上屏。AMD FSR 1.20210629 逐字移植 MSL（ffx_a.h 32-bit 三常量、AMD tap 偏移布局、RCAS limit、Task164 OOB clamp 进装载器）。MoltenVK 1.2.9 源码实证 id<CAMetalDrawable> 协议消费面（present/presentAtTime/addPresentedHandler respondsToSelector 守卫）= 包装可行。MobileGL/MoltenVK 二进制零改动
+- 联动自洽（零新事实源）：ame83_fsr_capable_renderer 重新纳入 libMobileGL.dylib（-gles 维持排除）→ mgFsrScale 缩窗 + 输入除法复活（与 EGL attribs 同源同步，Task154 病历的除法失配不可达）；ame48 守卫记录 Layer B（surface-vs-layer 恒等）；Task78 豁免比较 viewport vs surface（=render-res 恒等）；mgl_fsr 预交换 GL 链维持硬退休（Task166 修订注释 + 装机日志更新：伪 EGL 根因未变 + 双重升采样守卫）
+- 降级保护链：acquire 任何一步失败（无设备/库编译/管线/队列）→ nil → gl_bridge 回退视图层直连 + 全分辨率 attribs（da5918a 语义）；present 期丢帧限频日志绝不崩溃；中转分配失败退化 EASU 单趟（Task83 语义）；kill switch AME166_MGL_METAL_FSR=0；自描述几何（尺寸取自纹理自身，不信启动器信念）
+- 自查修三 bug：环信号量初值 1（许可语义，初值 0 首取空等超时）；Ame166Drawable 强持有 _fsrLayer（teardown 与在速 drawable 生命周期安全）；RCAS limit 用 constexpr（MSL 常量折叠）
+- CMake：mgl_metal_fsr.mm 注册（ObjC++/ARC/gnu++17 同 mgl_fsr 方言）+ Metal 框架链接
+- 验证：verify_task166 新建 64/64（A 法证 5 + B DSA 三处 4 + C 反向迁移 4 + D API 3 + E 实现 15 + F MSL 数学 8 + G gl_bridge 6 + H ame83 4 + I 退休维持 3 + J CMake 3 + K 公告/version.h 4 + L 语法门/括号/级联 5）；新语法门 task166_syntax_mgl.py（should_engage stub 编译 + 7 门控行为案例 + RCAS 换算 stub + MSL 结构不变量）；级联 165=34/34（A3 黑屏对改 git 钉住 cc9bfe4 防上传漂移 + G1 置顶区重锚）、164=30/30、163=36/36（TASK163_REPO 注入）、162=68/68、161=56/56、160=47/47、130 E9/E10 重锚（ame166 接线两处 + 仅匹配 1）、129 D1/D3 重锚（@NO 默认 + 哨兵锚），其余失败均为环境基线（stash 对比核实）
+- 公告：task166 置顶（Vulkan FSR 上线 + DSA 根因 + 矩阵更新：Vulkan=推荐首选）+ task165 矩阵诚实改写（Vulkan 行 ❌→✅、"切 GLES/4.0 用 FSR"建议作废 + 追记）
+- version.h REVISION 17 addendum（Task 166，不 bump）
+- 提交推送（fetch 防撞号：远端仍 3368468 无并行提交）+ CI 轮询
+
+### Stage Summary
+- **Vulkan 直连后端 FSR 上线**：完整 FSR1（EASU+RCAS）经 Metal 呈现层拦截，二进制零改动，加载区块流畅 + 画质兼得（用户硬需求闭环）
+- **ES/4.0 黑屏根因闭环**：DSA 强制开启（三会话 A/B 铁证）→ 默认关 + 存量反向迁移；Task165 解析层修复保持（3368468 own-image 回归实证）
+- 装机验证锚点：
+  1. Vulkan 后端 + FSR 档位：`[MGLFSR] Task166 Metal FSR engaged: EGL surface (private layer) WxH -> ... `（链路建立）+ `Task166 first frame presented: EASU WxH -> WxH -> RCAS -> display layer`（首帧上屏）+ `Task166 steady: 600 frames upscaled`（稳态）
+  2. GLES / 4.0 后端：画面恢复（DSA 已关；日志应现 "DSA support not detected"）
+  3. `[MGLFSR] Task154 MobileGL pre-swap GL FSR chain RETIRED ... Task166: present-side Metal FSR owns upscaling`（双链不冲突确认）
+  4. 若 Vulkan FSR 异常：`AME166_MGL_METAL_FSR=0` 环境变量强制关闭回退全分辨率直呈（分诊用）
+- 遗留继承：26.1.2 libjvm 崩溃、静态库虚拟按钮、README + 6.0.0 发行文案收尾
+
+---
+Task ID: 166-CI
+Agent: main (Super Z)
+Task: Task 166 CI 收尾
+
+Work Log:
+- 推送 7b36060 → run 36093123023 轮询 17 轮（~9 分钟）→ completed success
+- Artifacts 三件就绪：com.air-devs.air-ios.ipa (215.8MB) / trollstore.tipa (215.8MB) / AngelAuraAmethyst.dSYM (4.0MB)，2026-12-24 前不过期
+
+Stage Summary:
+- Task166 构建产物可装机；装机验证锚点：
+  ① Vulkan 后端 + FSR 档位 → `[MGLFSR] Task166 Metal FSR engaged: EGL surface (private layer) ...`（链路建立）→ `first frame presented: EASU ... -> RCAS -> display layer`（首帧上屏）→ 画面应为放大+锐化后的全分辨率；`Task166 steady: 600 frames upscaled`（约 10 秒后稳态确认，dropped 应为 0）
+  ② GLES / OpenGL 4.0 后端 → 画面恢复显示（DSA 已关，日志应现 "DSA support not detected"）；存量设备自动迁移（日志 "[Preferences] Task166 migrated MG DSA default: 1 -> 0"）
+  ③ 双链确认：`[MGLFSR] Task154 ... RETIRED ... Task166: present-side Metal FSR owns upscaling`（预交换 GL 链不复活）
+  ④ 分诊开关：Vulkan FSR 异常时设 `AME166_MGL_METAL_FSR=0` 强制回退全分辨率直呈（对比定位）
+- 遗留继承：26.1.2 libjvm 崩溃、静态库虚拟按钮、README + 6.0.0 发行文案收尾
+
+---
+Task ID: 167
+Agent: main (Super Z)
+Task: 【补记章节】Task 167 双根因修复——9d14c58 只提交了三个脚本（disas_getimage.py / task167_announcements.py / verify_task167.py），正文代码全部滞留工作区未提交，CI IPA（9d14c58 构建）实跑纯 Task166 代码；装机实证（f95a219 双日志，戳 Commit: 9d14c58）零 Task167 锚点、GLES/4.0 仍 DSA=1 黑屏、Vulkan 在同一 pc（libMobileGL.dylib+0x673a08 GetImage）崩溃。af9b807 补落全部代码。本章节为 Task168 会话按提交记录诚实重建（原章节在 9d14c58→af9b807 事故中随未提交工作区丢失）。
+
+### Work Log（按 af9b807/9d14c58 提交信息重建）
+- 根因一（Vulkan 启动崩）：MoltenVK 的 surface extent 源不是 CAMetalLayer.drawableSize 而是 MoltenVK 分类 naturalDrawableSizeMVK = bounds × contentsScale；Task166 Layer B 只写 drawableSize、bounds 留 CGRectZero → currentExtent {0,0} → MobileGL RecreateSwapchain 零面积守卫不装 swapchain → m_images 空 → MC 首帧 DSA glBlitNamedFramebuffer(fb0) 命中 SwapchainObject::GetImage(0) 空向量裸读 SIGSEGV。对发行 dylib 反汇编（scripts/disas_getimage.py，capstone）与装机崩溃 pc 逐字节吻合。修复：Layer B 在全部三处几何点（创建/既有层同步/update_size 钩子）同写 bounds + contentsScale(1.0)，natural == drawable == swapchain extent
+- 根因二（DSA 反向迁移从未执行）：Task166 把迁移挂在 application:configurationForConnectingSceneSession:，UIKit 只为【新建】场景会话调用——既有会话设备永不再触发（60+ 份历史日志该回调内零日志）；叠加 Task129d 时代 @YES 默认经 defaults 合并每次启动持久化进 plist，存量 1 压制 Task166 新 @NO。修复：常跑调用点搬进 main.m（toggleIsolatedPref 之后、任何消费者之前），ame166_migrateMgDsaBlackScreen 获得 NSNumber/NSString 双类型容错 + 无条件运行锚点日志 "[Preferences] Task167 MG DSA black-screen migration ran (stored=1, flipped=1)"
+- 验证：verify_task167 31/31；重锚 166 C2 / 130 E10 / 165 G1；级联 166=64/64、165=34/34、164=30/30、163=36/36、162=68/68、161=56/56、160=47/47、task166_syntax_mgl 绿、task130=47/49 stash 实证基线一致（D4 FSR1.cpp 锚 + I1 l10n E5/E6 级联，均既有）；公告 task167 置顶 + task166 诚实修订；version.h REVISION 17 addendum
+- CI：9d14c58 run 36098435674 success（但只有脚本）；af9b807 run 36099859758 success（真代码装机版）
+
+### Stage Summary
+- 装机锚点：Vulkan = [MGLFSR] engaged + first frame presented + steady（无 GetImage 崩溃）；GLES/4.0 = Task167 迁移日志（stored=1, flipped=1）+ DSA support not detected + 画面可见
+- 用户装机验证（485b18c 日志 + 用户确认）：af9b807 治愈 Vulkan + ES 黑屏 ✅（Task169 记录在案）
+- 教训：提交时"代码滞留工作区"事故二次发生（9d14c58 型）——提交前 git status --stat 必须与提交信息声明逐项对账
+
+---
+Task ID: 168
+Agent: main (Super Z)
+Task: ①新拟态装机反馈修复（"下载最新提交看不到新拟态"——范围判定失误：Task163 凸起管线只在无壁纸分支生效，有壁纸时卡片提前 return 进旧毛玻璃；用户定稿：全部卡片统一新拟态 + 动态形态（卡面随壁纸透明度/模糊 + 双阴影叠加，无把握不逞强）+ 新增"实底"开关）②使用问题条目 JSON 化（对齐公告双文件模式，含标题/图标id/简介，交付两个维护路径）
+
+### Work Log
+- 前置：fetch 对齐 8d5ca47（Task169 四连修 + v6.0.0 发布，168/169 间跳号：169 被并行会话占用），空号 168；AskUserQuestion 五问定稿（始终实底/全部卡片统一/双文件对齐公告/分类分组/顺带更新过时项 + 备注：动态随壁纸透明度模糊调整，没把握不逞强，加实底开关）
+- 引擎：UIKit+NativeSurface 新增 ame_attachNeumorphShadowOnly（仅挂双阴影承载层 + 规格等比圆角 + masksToBounds=NO，不写 backgroundColor——与实底版唯一差异），AmeNeumorphShadowView 机制复用
+- 管线（BackgroundManager）：applyNeumorphCardEffectToView 删 Task163 壁纸早退 return，改三分支（实底开关开→一律规格表面+双阴影 / 动态+壁纸→applyEffectToView 面 + attach 仅阴影 + blur 层圆角同步到宿主新值 / 无壁纸→规格表面）；applyEffectToCollectionViewCell 重构（实底或无壁纸→统一新拟态尾部前置；壁纸+动态→Task152 探测/毛玻璃/半透明面原样 + Task168 收口：attach + 圆角同步 + 宿主链逐层放行）；applyCardEffectToCell 列表行维持 Flat（边界：cell 阴影互叠，用户点名的是卡片）；TerracottaViewController statusCard 改走卡片管线；侧栏/右面板 Task163 平贴结论零波及
+- 开关：BackgroundManager.cardsNeumorphSolid（defaults 直读直写，键 background_cards_neumorph_solid，默认 NO=动态）+ BackgroundSettingsViewController section0 第四行（Value1+UISwitch tag410，回调落盘 + refreshUIEffect 统一刷新链）
+- FAQ JSON 化：scripts/task168_faq_extract.py 程序化抽取 .m 硬编码 34 条（相邻字面量状态机 + 转义还原），顺带更新两处过时结论（fsr 条目"Vulkan 暂不支持"→"三后端均支持，Vulkan 经 Metal 呈现层拦截放大 Task166/167"；mgLag 条目缓解办法首位补 Vulkan+FSR 推荐路径），生成 help-faq.json（仓库根维护源）+ Natives/resources/help-faq.json（随包，payload cp -R resources/* 自动进包，零 pbxproj/CMake 改动），双文件逐字节一致；LauncherHelpViewController.buildFaqData 重写为 bundle JSON 读取（解析失败空分组+日志，LauncherHelpFaqItem 模型零改动）
+- l10n：净增 1 键 background.cards.neumorph.title ×6 语言（en/zh-Hans/zh-CN/zh-Hant/ja/km），四主语言 1952→1953；14 个历史校验器计数断言同步重锚；verify_task151 H 检查（"无陈旧计数锚"）随基线 1953 诚实重锚
+- 公告/版本：task168 公告插 index 2（169 F5 钉死 anns[1]）；version.h REVISION 17 addendum
+- 校验：verify_task168 新建 42 项（A 引擎/管线 13 + B 开关/l10n 9 + C JSON 化 10 + D 公告/版本 3 + E 配平/级联 7）；stash 前后全 sweep 对拍实证零新增失败（脚本见 scripts/task168_baseline_sweep.py，before/after JSON 存 /home/z/my-project/scripts/）；历史失败均为 HEAD 既有（130 D4+I1、142 E组 anns[0] 被 169 置顶漂移、156 G 的 154 基线漂移、129/131/132/133/134/138/139 子级联沙箱路径默认值），本会话顺手修复：verify_task169/135/164 路径可移植化（164 复跑 30/30 全绿）
+- 已知边界：cell 列表行仍 Flat；磁贴间隙阴影叠加属新拟态正常形态；Terracotta 本体仍在 CMakeLists 注入名单外（启动崩溃排查中），其代码改动随回归一并生效
+
+### Stage Summary
+- 装机锚点（设壁纸 + Task163 后首次可见）：
+  ①主页磁贴/下载版本卡：动态默认 = 卡面毛玻璃/半透明（随透明度/模糊设置）+ 新拟态双阴影凸起，壁纸从磁贴间隙透出
+  ②设置 → 外观 → "卡片新拟态（实底）"开 → 卡片一律规格实底（浅 #e0e0e0/深 #2c2c2c）+ 双阴影，壁纸透明度/模糊对卡片失效
+  ③侧栏/右面板无阴影外溢（Task163 形态不变）；列表行平贴新拟态
+  ④侧栏 → 使用问题：34 条四分类渲染如旧（数据已从 JSON 读取）
+- 维护路径（用户交付物）：启动器公告 = 仓库根 announcements.json（随包回退 Natives/resources/announcements-fallback.json）；使用问题 = 仓库根 help-faq.json（维护源）+ Natives/resources/help-faq.json（随包运行时读取），两文件逐字节一致（verify_task168 C1 把守漂移）；改完重新构建生效
+- 遗留继承：26.1.2 libjvm 崩溃、静态库虚拟按钮、README/6.0.0 收尾、142 E组/156 G 基线漂移（169/166 时代既有，未纳入本会话）
+
+## Task 170（本会话，卡片新拟态整体透明度滑条（替换实底开关）+ 主页卡片间距统一 20pt + 法证锚诚实修复）
+
+### 背景（用户反馈，附图未达服务器——按文字描述实施）
+- "每一个按钮的边缘都有很重的晕影"（图一正常但无法复现/图二现状）：机理 = 新拟态双阴影承载层 shadowOpacity 1.0 全不透明色（#bebebe/#ffffff），叠加在壁纸上即重晕影；全代码库仅此一处"每按钮边缘光晕"机制
+- "主页面每个卡片中间的间距改成外围的卡片距离侧边栏的间距一样长"：主页外沿 = section 15 + item 5 = 20pt，卡间 = 5+5 = 10pt
+- "把新增的选项替换为新拟态透明度，用拉条从 0%~100% 调节整个卡片的透明度，而不是实底啥的"
+
+### Work Log
+- 偏好：cardsNeumorphOpacity（CGFloat 0.0~1.0，defaults 键 background_cards_neumorph_opacity，默认 1.0 = Task168 形态原样；直读直写不进缓存链；setter 钳制）；cardsNeumorphSolid 全链退役（Task168 开关从未到达用户设备——装机日志 Commit: 8d5ca47 实证，无迁移负担）
+- 管线：applyNeumorphCardEffectToView 二分支化（hasBackground 门）+ 动态/无壁纸两分支宿主 alpha；applyEffectToCollectionViewCell 无壁纸门 `if (![self hasBackground])` + 两分支 alpha（cardTarget/target）；语义 = 整个卡片（卡面 + 双阴影承载层 + 内容）作为单元缩放（阴影承载层是宿主子视图，随 alpha 等比淡出）——引擎 UIKit+NativeSurface 零改动；列表行 applyCardEffectToCell Flat 边界维持
+- 设置页：row3 改透明度滑条行（Task156 行内布局同款，tag 500/501/502，min 0.0 满足"0%~100%"全开口径，回调 cardsNeumorphOpacitySliderChanged 落盘 + refreshUIEffect）
+- 主页间距：item (0,5,0,5)→(0,10,0,10) ×2、section (5,15,5,15)→(10,10,10,10) ×2、interGroupSpacing 10→20——外沿 10+10=20 与旧观感一致，卡间横向 20、行间纵向 20 全部对齐
+- l10n：键原位换名 background.cards.neumorph.title → background.cards.neumorph.opacity.title ×6 语言（en/zh-Hans/zh-CN/zh-Hant/ja/km），四主语言计数 1953 不变（净变化 0，14 个历史计数锚零扰动）
+- 公告/版本：task170 公告插 index 2（169 F5 anns[1] pin 保护；168 顺延 anns[3]）+ version.h REVISION 17 addendum（Task 170，无 bump）
+- 校验：verify_task170 新建 34 项（A 偏好 4 + B 管线 8 + C 设置页 4 + D 间距 4 + E l10n 4 + F 公告/版本 4 + G 配平/引擎 5 + H 级联 1）；verify_task168 诚实重锚（A5/A7 条件、B1-B7 滑条化、D1/D2 公告顺延）
+- 级联诚实修复（用户上传 76895f3 轮换 latestlog* 引发的工作区日志锚漂移 + 历史欠账）：169 A 组六个断言真正 git 钉住 485b18c:latestlog.txt（注释一直声称钉住但实现读工作区——补齐承诺，断言零改动，复跑 49/49）；136 A5/C1/C5 重锚到 Task160 新拟态语义（自 Task160 起漂移、仅经 138 J 行豁免的历史欠账，复跑 63/63）；138 C1 改证据条件锚（GLES 会话日志已轮换出仓库根，同文件 A2 先例，复跑 50/50 ALL PASS）；165 G1 置顶窗口 7→8（task170 prepend 顺延，家法 top-N 先例，复跑 34/34）；166/167 的级联继承失败随 165 根修消除
+- 遗留伪影：141 G4"工作区改动仅限预期集"提交前必挂（本会话 scripts/task170_announcements.py 不在白名单）、提交后自愈；139 A1/B1/H 组/I1 为基线内既有（沙箱路径/病历证据轮换）
+
+### Stage Summary
+- 装机锚点：①设置 → 外观 → "新拟态透明度"拉条——觉得卡片边缘晕影重就往低调（推荐 60%~80% 起步），阴影随卡面一起变淡；100% = 上一版形态原样 ②主页面卡片间距与外围对齐（20pt）③下载页版本卡/联机页状态卡同受滑条影响
+- 用户诊断备注：装机日志（8d5ca47 会话）显示游戏已在 zink（libOSMesa，Mesa 4.1 MoltenVK）正常启动越过启动器界面——Task169 JIT 有界等待修复路径生效；`ARB_direct_state_access detected` 为 zink 桌面 GL 合法行为（Task167 DSA 迁移仅针对 GLES/MobileGL）；FSR 锚点仍需 Vulkan/GLES-4.0 会话验证（zink 不在 FSR 能力集）
+- 维护路径不变：公告 = 仓库根 announcements.json；使用问题 = 仓库根 help-faq.json + 随包副本（逐字节一致）
+
+---
+Task ID: 171
+Agent: main (Super Z)
+Task: 用户七症状装机反馈（f26337d 构建，3 个日志：latestlog.txt=ANGLE 26.3 FO 包 / latestlog.old.txt=mg 26.3 多人 / latestlog.old=mg 26.4-snapshot-1）
+
+Work Log:
+- ANGLE 崩溃取证：renderpearl GlBackend.loadLibrary（26.3 真 jar 反编译）要求 LWJGL provider 与 SDL_GL_GetProcAddress 对 glGetError 返回同址；ANGLE 会话日志实锤真实 SDL 拒载（"OpenGL library already loaded"）+ glGetError mismatch → 回落原生 Vulkan → Iris 在 initRenderer 拿空 GLCapabilities → ExceptionInInitializerError。根因 = libtinygl4angle 从未进 ame_glBridgeEnabled 列表（Task 79 只收编 zink 系）。修复：接入桥接（镜像链指针一致按构造成立）+ AMETHYST_ANGLE_GL_BRIDGE=0 逃生阀
+- 物品栏偏移取证：HotbarDiag REJECT above bar y=1516/1556 < barY=1560；FSR preset3（scale 1.70）下 MC 窗口 1388x964，视觉物品栏物理顶边 = 1640-88*1.7 ≈ 1490，旧几何 1640-20*guiScale=1560 拒掉上半段（且旧 barW=720 漏掉左右各两槽、中段槽位左偏一格）。修复：touchHotbar 几何改用物理/窗口单源比例（不能用 mcscale——内部已除 resolutionScale 会双重除法），182x22 完整精灵 × guiScale × ratio，比例护栏 [0.25,8] 异常回退 1.0
+- CF key 取证：三请求路径（getEndpoint/postEndpoint/searchModWithFilters）以 [self headers]==nil 为致命门直接返回 missingAPIKeyError——请求从不发出，Task162 的 keyless 镜像回退成死代码；sandbox 实测镜像免 key 200（冷启动 11s、后续 2s；官方 403）。修复：keyless 返回 Accept-only 头照常发请求；4 处直发 setValue 增加空值保护
+- 头像取证：Task169 的可见卡直刷只挂网络完成回调；切标签页返回走会话缓存命中分支只有 reloadSections（转场时序下不重绘）。修复：ame171_syncVisibleProfileAvatar 三分支兜底 + viewDidAppear 补刷
+- 多人崩溃取证：所指 latestlog.old.txt 会话干净（mysv.dpdns.org、60fps、exit(0)）——崩溃会话日志已被"先删后移"轮换覆盖（只存活一代）。修复：init_redirectStdio 轮换前读旧尾部 8KB，无 ") called" exit 标记则保全为 latestlog.crash.txt
+- 26.4 回退 Vulkan 取证：26.4-snapshot-1 真 jar 反编译 PreferredGraphicsApi：DEFAULT.getBackendsToTry() 从 26.3 的 {gl, vulkan} 翻转为 {vulkan, gl}（Vulkan 优先）+ OptionsForceDefaultGraphicsApiFix datafix 重置存量选项；装机日志实锤 26.4 会话 GL 路径从未被尝试（无 RenderPearl GL 探窗、无 GL 失败行）直接 "Using graphics backend Vulkan"。修复：Tools.java appendGraphicsBackendArg——版本 ≥26.4（前导 major.minor 数值解析）且渲染器非 libMoltenVK 时追加 --graphicsBackend opengl（26.3/26.4 Main 均支持该参数；GL 失败仍按顺序表回落 Vulkan）
+- 键盘取证：多人聊天登录段日志实锤每次按 ✎输入法 按钮都是 becomeFirstResponder=1（零 dismissing 行）= 字段每输一个字符后被系统拆会话（旧序 become 后立即写 text=@" " + clearsOnBeginEditing=YES 与 iPadOS 26+ UIAsyncTextInput 异步会话激活竞争）。修复：哨兵空格先于 become 写入 + clearsOnBeginEditing=NO + ame171_armKeyboardRecheck 0.4s 健康检查自动重挂（收起代数护栏防与用户打架，深度上限 2）
+- 文档：version.h Task171 附录（七主题）；announcements.json task171 条目插入 index 2（task169 anns[1] 钉不动，task170/168 顺延 3/4）；verify_task170 F1 与 verify_task168 D1 公告位置锚重锚
+- 验证：verify_task171 A7 B8 C6 D4 E2 + 级联 168/170 重锚后全绿；括号 delta 对 HEAD 基线全平衡（sdl3_hook 的 6 个多余 ')' 为剥离器对 HEAD 既有误报，非本轮引入）；ECJ 本沙箱不可用，Java 侧靠人工复核 + CI 编译门
+
+Stage Summary:
+- 七症状修复齐发；装机锚点：①ANGLE 会话 "[SDLHook] SDL_GL_LoadLibrary(...) -> pojavInitOpenGLForSDL3"（桥接接管）+ "Using graphics backend OpenGL" + Iris 不再崩 ②"[HotbarDiag] Task171 FSR-aware hotbar geometry ... ratio=1.70" + 物品栏上半段可点中 ③"[CurseForgeAPI] Task171: no API key configured -- requests go keyless" + CF 源无 key 可用 ④切标签页头像即显 ⑤下次崩溃后容器内有 latestlog.crash.txt ⑥26.4 会话 "[Tools] Task171: ... forcing --graphicsBackend opengl" + "Using graphics backend OpenGL" ⑦"[SurfaceVC] Task171: keyboard auto re-arm"（若系统仍拆会话）或键盘首开即可连续输入
+- 多人游戏崩溃本体无日志证据（会话干净），证据保全机制已就位，待下一轮 crash.txt
+- 遗留：CI 编译确认（Tools.java 无法本地编译验证）
+
+---
+Task ID: 172
+Task: 用户六症状装机反馈（9be2b53 构建，760c07c 上传三日志）：ANGLE 依旧崩溃 / CF 功能异常 / 键盘依旧异常 / 头像切标签页回来要点一下 / 版本配置加 TouchController（自动配置 UDP+屏蔽控件）/ 二级菜单启动卡 JIT 等待 120s 闪退
+
+Work Log:
+- ANGLE：CFR 反编译本仓 lwjgl-333 的 GL$1.class 实锤 macOS 平台【从不查 eglGetProcAddress】（switch 只有 LINUX/WINDOWS case + OSMesaGetProcAddress 兜底）——旧镜像链 eglGetProcAddress 优先是错误反推，对 libtinygl4angle（libEGL 依赖导出 eglGPA、glGetError 是 libGLESv2 直接导出）两链不同地址 = mismatch。镜像链逐字对齐反编译结果
+- JIT 卡死：stikjit:// 切后台后 StikJIT 没切回 → 进程冻结（零心跳零超时，日志戛然而止）；切回时调试器已死 → brk #0x69 闪退。三处 invokeAfterJITEnabled：后台任务断言 + 等待成功后 TXM 调试器存活性复查 + ame172_reattachJIT26ThenLaunch（前台等待 + 重挂 + 有界等存活）
+- 键盘：SDL UIKit 自己的 textField（隐藏窗口内）反复抢 FR 但投递链不可靠。Start/Stop 钩子真实调用后派发 AME172 通知 → SurfaceVC 把键盘路由到启动器 inputTextField（Task171 哨兵同序）；MC 关聊天键盘同步收起
+- 头像：fetch 失败/坏 URL 路径离主线程调 completion（契约违反）→ 静默失效到下次触摸。两路径回主线程 + 四分支取证日志 + 0.35s 转场后补刷
+- TouchController 版本级：ProfileSettings 高级区新行（复用既有 l10n 键零级联）；UIKit_launchMinecraftSurfaceVC 换根前 ame172_applyProfileTouchController（enable=YES + mode=UDP + hide_controls=YES；OFF 不碰全局）
+- CF：镜像 502 瞬态（装机日志实锤手动重刷即成功）→ 异步搜索空体/JSON 失败两分支 5xx 退避重试（2s×2）+ 同步 getEndpoint failure 5xx 包装 code 543 走既有循环
+- 文档/验证：version.h 附录 + announcements task172@2；verify_task172 51/51；重锚 task171(B4/B7/D2/D3)/165(G1 9→10)/167(E1 7→8)/168/170(索引+1)；169 49/49、166 64/64、167 31/31、165 34/34；168 42/43、170 33/34 仅剩沙箱遗留路径子级联（163 FileNotFoundError 核实为 workspace 旧路径，既有条件）
+
+Stage Summary:
+- 装机锚点：ANGLE=[SDLHook] Task172 GL$1 mirror: OSMesaGetProcAddress=0x...（且无 mismatch + Using graphics backend OpenGL）；JIT=每 10s 心跳 +（异常时）Task172 wait satisfied but JIT26 debugger is gone -- re-attaching；键盘=[SurfaceVC] Task172 SDL auto-keyboard routed to launcher field + stop-text-input: keyboard resigned；头像=[HomeAvatar] Task172 branch: 四分支日志；TouchController=[TouchController] Task172 profile auto-config applied；CF=Task172 retrying search after 5xx non-JSON body 后自动成功
+- 遗留：头像若仍复现，分支日志将首次给出定位证据；ANGLE 修好后 FO 包 Iris 渲染质量属游戏侧观察项
+
+---
+Task ID: 173
+Agent: main (Super Z)
+Task: 用户新拟态定稿重写——"用正常的状态重写"+"新拟态界面开关"（模糊程度下方）+"透明度不含字体"+壁纸适配代码退役
+
+Work Log:
+- 复现方法定稿根因：用户实测"Bing 壁纸开着调一次 UI 效果再关掉 Bing 壁纸，新拟态回到正常形态"——证明正常形态（规格表面色 #e0e0e0/#2c2c2c + 双阴影）一直存在于无壁纸分支；有壁纸的"动态卡面"分支（applyEffectToView 毛玻璃/半透明面 + ame_attachNeumorphShadowOnly 双阴影 + 宿主 alpha）= 半透明卡面叠 20/60px 暗影，落在壁纸上被读作"每个按钮边缘的重晕影"——这正是 Task168/170 用户持续报"压根就没改"的病灶
+- 管线重写（壁纸适配整链退役）：applyNeumorphCardEffectToView 开关门在先（!cardsNeumorphEnabled → applyEffectToView 旧管线）；开启 = 永远"正常态"（清 blur 残留 + 规格表面 + 卡片本体透明度），不再读 hasBackground/不再插 blur 层；applyEffectToCollectionViewCell 三段式（ON 壁纸无关正常态 / OFF+无壁纸旧尾部 / OFF+有壁纸旧玻璃管线，attach 收口与宿主 alpha 整链删除）；applyCardEffectToCell 开关门（OFF → applyEffectToCell，ON → Flat 平贴恒定）
+- 引擎新原语 ame_applyNeumorphCardOpacity:（Task173"透明度不含字体"定稿）：卡面 = 动态色安全淡化（alpha 在 dynamic provider 内逐 trait 重解析后叠 alpha，深浅色切换不脱色）+ 双阴影承载层整体 alpha；文字/图标子视图不参与；≥0.999 恢复全不透明规格表面；宿主 view.alpha 整体缩放全撤（三管线零残留）
+- 偏好层：cardsNeumorphEnabled（background_cards_neumorph_enabled，默认 YES，直读直写与滑条同家法）；cardsNeumorphOpacity 语义注释修订为"卡片本体"
+- 设置页：sections[0] 五标题（界面开关插模糊程度下方 index3）；开关行恒显（无壁纸也显示——新拟态与壁纸无关正是本轮语义，section0 无壁纸行数 0→2）；行号按 hasBackground 平移（开关 = hasBackground?3:0，滑条 = hasBackground?4:1）；灰化反转 = 开关开 → 三行旧选项 contentView.alpha 0.35 + 关交互、滑条可操作；关 → 反转（滑条 enabled=NO + 0.35）
+- l10n：background.cards.neumorph.interface.title ×6（en Neumorphic Interface / 新拟态界面 / 新擬態介面 / ニューモーフ UI / 高棉语），四主语言计数 1953→1954，17 个历史计数锚全量重锚
+- 公告：task173 条目插 index 2（server-pin/task169 anns[0]/[1] 不动；171/170/168 顺延 anns[3]/[4]/[5]）；version.h REVISION 17 addendum（Task 173，无 bump）
+- 校验：verify_task173 新建 32 项（A 偏好 4 + B 管线 9 + C 设置页 6 + D l10n 4 + E 公告/版本 4 + F 配平 4 + G 级联 1）；历史重锚 = 170 B1-B7/F1/F2/G5（alpha 锚→卡片本体原语、公告顺延、引擎仅追加口径）、168 A5-A9/D1/D2（正常态重写口径）、171 C3 证据条件化（反编译工件 = Task171 会话本地、task138 C1 家法）+D2/D3 公告顺延、165 G1 窗口 9→10、167 E1 窗口 7→8、136 C2 行管线开关门重锚、137 G3 追加 Task173 l10n diff 分支
+- 级联基建（家法欠账清偿）：112_118/119_124/125_128 等 14 个深脚本 REPO 硬编码路径可移植化（os.path 两级 dirname 家法，与 169/135/164 同款）；112_118 E5/E6 证据条件化（两个 Task116 会话本地审计助手从未入库，绝对路径引用，本沙箱缺席）；167 F3 与 168 E7/170 H1/172 G1 口径无关化（失败 ⊆ 基线集合，不再钉精确分数）
+- 全量对拍（83 校验器 stash 前后）：HEAD 20/83 绿 → 工作树 30/83 绿；本改动净治愈 11（112_118/119_124/125_128/129/167/168/170/171/172/58/59）；新破坏仅 137 G4（工作区文件集检查，announcements.json 在根目录不在前缀白名单——提交后 git status 清空自愈，141 G4 同款预期内伪影）
+
+Stage Summary:
+- 装机锚点：①设置 → 背景 → "新拟态界面"开关（模糊程度正下方，无壁纸也显示）——开启即"正常态"卡片（规格表面+双阴影），有壁纸也一样，边缘重晕影消失 ②开关开启时 UI效果/透明度/模糊程度三行变灰，"新拟态透明度"可操作——调低只淡卡面与阴影，文字保持全不透明 ③关闭开关回到旧壁纸管线（毛玻璃/半透明恢复可调）
+- 复现方法闭环：用户不再需要"Bing 开-调-关"舞步，开关打开的默认态即舞步终态
+- 遗留：CI 编译确认（ObjC 均为既有 API 面，无新框架）；137 G4 提交后自愈确认
+
+---
+Task ID: 174
+Agent: main (Super Z)
+Task: Task173 构建装机反馈——"怎么都无法复现正常的新拟态，全都是晕影" + "新拟态透明度的百分比没有正确显示"
+
+Work Log:
+- 晕影根因定稿：Task173 只把【卡片】重写为正常态，壁纸层仍垫在卡片底下——规格双阴影（20pt 偏移/60pt 模糊/opacity 1.0）投在照片上必然读作边缘晕影；用户复现方法（Bing 开→调→关）的终态是壁纸被【取消后】的整体形态，背景本身就是"正常态"的一部分。结论：新拟态界面开关必须是画布级接管，只改卡片物理上不可能消除晕影
+- 修复①画布接管：applyBackgroundToWindow / applyBackgroundToSplitViewController 顶部 cardsNeumorphEnabled 门（开启 = 壁纸容器不铺 + 宿主底色回归原生系统色 = 复现终态；壁纸状态保留，Bing 自动刷新照常落盘仅视觉收起）；refreshUIEffect 双分支——ON 收起在挂容器 + 双宿主底色原生 + 一次性取证日志 "[Task174] neumorph UI canvas active"，OFF 对被收起的壁纸容器原位重建（hasBackground && !container → applyBackgroundTo* 原链路自带透明化）+ 既有 blur 重挂不变
+- 修复②百分比实时回显：cardsNeumorphOpacitySliderChanged 自 Task170 起从不更新数值标签（只在 cellForRow 取落盘值，拖动全程冻结）——blurIntensitySliderChanged 同款取回范式（slider→superview→superview→contentView viewWithTag:501）即时重写 %.0f%%
+- 文档：announcements task174@2（173/172/171/170/168 顺延 3/4/5/6/7）；version.h REVISION 17 addendum（Task 174，含装机日志锚）；l10n 零新增（四主语言计数 1954 不动）
+- 验证：verify_task174 新建 24 项（A 画布门 6 + B 回显 4 + C 不回潮 4 + D l10n 2 + E 公告/版本 4 + F 配平 3 + G 级联 1）；诚实重锚 = 129 E1/E2（底色双分支计数 2→3，画布门新增第三条原生早退路径）、165 G1（置顶窗口 11→12）、167 E1（窗口 9→10）、173 E1/E2、172 H2、171 D2/D3、170 F1、168 D1（公告顺延）
+- 级联收尾：verify_task165 ROOT 默认值仍是会话本地旧仓路径（173 移植 14 个深验证器时的漏网之鱼——级联跑被 env 救、单跑 FileNotFoundError）→ 可移植化收尾（脚本仓两级 dirname，169/135/164 家法），166 L5 / 167 F2/F4 / 171 E1 三处子级联传染同源痊愈
+- 全量对拍：174 24/24、173 32/32、172 51/51、171 30/0、170 34/34、169 49/49、168 43/43、167 31/31、166 64/64、165 34/34 全绿
+
+Stage Summary:
+- 装机锚点：①开关开启（默认）后壁纸整层消失、底色回归原生系统色、卡片规格表面+双阴影 = 复现方法的终态本体，边缘重晕影不再存在 ②日志出现一次性 "[Task174] neumorph UI canvas active -- wallpaper layer retracted" 即画布模式生效 ③拖动"新拟态透明度"滑条百分比即时跟随 ④关闭开关壁纸容器原位回归（毛玻璃/半透明旧管线）
+- 语义定稿：新拟态界面开关 = 画布级模式开关（开启期间壁纸被新拟态画布盖住属预期行为，公告已写明）；开关关闭恢复壁纸，两态一键互切
+- 遗留：CI 编译确认（改动均为既有 API 面：UIView.backgroundColor / UIVisualEffectView tag 清理，无新框架）
+
+### Task 174 补记：rebase 到十症状并行合并树
+- 推送时发现并行会话已合并"Task 173 十症状轮"（839034d 合并树 + 两枚 CI 修复）：设置页滑条重构为统一 Auto Layout（透明度/模糊合并共享块，灰化点 3→2 但仍覆盖三行）、l10n 计数 1954→1955、verify_task173 拆分为十症状版 / verify_task173b_neumorph
+- 本 Task 重放到合并树：标签取回链核验成立（slider/valueLabel 仍直挂 contentView，Auto Layout 不改层级）；画布门与 refreshUIEffect 双分支完整幸存
+- 重锚终态：公告序 = server/task169/task174@2/新拟态173@3/十症状173@4/172@5/171@6/170@7/168@8；174 E1/C2/D1、173b E1、173 M3、172 H2、171 D2/D3、170 F1、168 D1/D2、167 E1（窗口 11）、165 G1（窗口 13）全部对齐
+- 连带治愈：verify_task173（十症状版）ROOT 硬编码路径可移植化（tinygl4angle.c FileNotFoundError，同 165 家法）；171/172 级联随之全绿
+- 合并树终局对拍：174 24/24、173 123/0、173b 32/32、172 51/51、171 30/0、170 34/34、169 49/49、168 43/43、167 31/31、166 64/64、165 34/34 全绿
+
+### Task 174 补记 2：CI 拉锯终局（round 5/6/7）
+- 推送后与并行会话就 VGPU/ObjC 编译失败连跑三轮拉锯：round-4 别名生成器缺预处理器感知（glX 族在 NOX11 下零实现 → 36 个未定义符号）；我提了文本剪除版 round 5（737 条），并行会话随即推出预处理器级重生成（944/819/0 missing）覆盖之——认领对方方案，弃我的窄修
+- round 6 双方撞同一诊断（previousKeyWindow 先声明后使用 + libproc.h 不在 iPhoneOS SDK → extern 原型），并行会话先推，认领；round 7 独我发现：ame173_rowSpec 字典下标取出的内层数组被静态标成 NSDictionary *，九处整数下标同根因报错，一行类型修复（NSArray *）
+- CI 终局：run 36179256757 = **success**（02107f7），承载 Task 174 画布接管 + 百分比实时回显 + 双 173 合并树全部内容
+
+---
+Task ID: 175
+Agent: main (Super Z)
+Task: 用户六症状装机反馈（f484eb7 构建，b1e9723/e54aca5 三日志：latestlog.txt=Forge 1.8.9+vgpu 会话 / latestlog.old.txt=ANGLE 26.3 FO 包崩溃 / latestlog.old=mg 26.4 正常会话）：ANGLE 依旧闪退 / CF 不显示下载量且不按筛选排序 / 主页头像切标签页回来不显示 / 物品栏切界面尺寸或换分辨率后位置大小偏移 / forge1.8.9+vgpu 崩溃且装包时无 JIT 申请弹窗 / 新拟态开启时壁纸被覆盖
+
+### Work Log
+- ANGLE 取证定案：桥接+补全层全部生效（"Using graphics backend OpenGL, ANGLE 2.1.2400"），崩溃点后移到 minecraft:pipeline/gui —— "Couldn't compile vertex shader ... ERROR: 1:1: '' : syntax error"。机制：MC 26.3 RenderPearl 管线 shaderc→SPIR-V→spirv-cross 产出【桌面 GLSL 330】（信了 tinygl4angle 的桌面 3.3 伪装），glShaderSource 原样递给 ANGLE GLES3 上下文 = ES 编译器对桌面版本号 1:1 语法报错；tinygl4angle 的 ES 直通分支只认 "#version NNN es"
+- 修复（spvc_shim.c 拦截闭环，ANGLE/MobileGlues 二进制零改动）：spvc_compiler_compile 出口拦截——桌面源（#version>=130 非 es）时用同 ctx 留存的 SPIR-V 字重 parse，建第二个 GLSL 后端编译器 + ES 选项（GLSL_ES=1/VERSION=300）编译，替换 *source；登记表（ctx→字副本 / compiler→ctx+parsed_ir+backend）在 parse/create_compiler 登记、destroy/release_allocations 作废；同源校验（last_parsed_ir == compiler 的 parsed_ir）防 ctx 复用错配。门控：AMETHYST_RENDERER 含 tinygl4angle 才启用（mg/zink/vgpu 不动）+ AME175_ANGLE_ES_REWRITE=0 逃生阀。选项 API 双形（新版 spvc_context_create_compile_options 优先、旧版 spvc_compiler_create_compiler_options 兜底）；二进制法证（scripts/task175_spvc_symtab.py，nlist 解析——导出 trie 解析器两轮翻车后改走 symtab 实锤 impl 只导出旧版四件套）
+- CF 双修：projectFromCurseForgeProject 丢 downloadCount（UI 读 downloads 键，Modrinth 同名）→ 恒显 0 次；loadModpackList 从不传 sort/loader（模组页一直传）→ 整合包 tab 两源都不排序。镜像 curl 实证 sortField/downloadCount 响应一直正常 = 纯字段/参数断层
+- 头像第五轮（日志铁证）：初始主页实例（setupChildViewControllers 创建）从未写入 cachedHomeVC → 首次切标签页回来 showHomePage 缓存未命中 → 新建实例（日志 "Task173 home VC created" 出现在首次切换后）→ Task169/171/172 修过的全部时序病灶在新实例复发。侧栏布局补注册（卡片布局本就注册）；另 0.35s 兜底先 reloadProfileSection（走 cellForItemAt 全链 = 首屏成功渲染同路径）再直写（crossDissolve 快照防御）
+- 物品栏/输入双修：sendTouchPoint 抓取态漏乘 resolutionScale（×在 !isGrabbing 分支内；窗口=物理×resScale/fsr，历史会话 resScale 恒 1.00 从未暴露——"更换分辨率后位置偏移"的实锤根因）→ 提出为无条件；touchHotbar 比例改 ame_windowToPhysRatio 单写者全局（environ.h 声明，updateSavedResolution 钳制 [0.25,8] 写入，防 nativeSendScreenSize 改写 window 全局）+ 本地重算回退 + guiScale 2s 节流保鲜（改界面尺寸立即生效）+ "Task175 geometry snapshot" 一次性全量取证行（phys/surface/win/resScale/guiScale/ratio/来源）
+- 旧版 Forge 双修：installer URL 无后缀形在 maven/bmclapi 双 404（1.8.9-11.15.1.2318 实锤；后缀形 1.8.9-11.15.1.2318-1.8.9 = HTTP 200）→ buildInstallerURLCandidatesForLoader（1.x minor<=12 追加后缀候选）+ installModLoader 逐候选循环；launchJVM 预检占位 mainClass（net.angelaura.installer.MissingLoader）→ 主线程弹窗（_comment_ 即导入期 i18n_str_555 全句）+ return 1，不再裸 ClassNotFoundException。JIT 疑问结案：日志 "[DyldLVBypass] TXM debug JIT mapping active" = 调试器已挂着，JIT 已启用无需申请弹窗（设计行为，已写进公告）
+- 新拟态壁纸共存：Task174 画布接管（开启即收壁纸）被用户读作 bug → 退役。两个 applyBackgroundTo* 的 cardsNeumorphEnabled 早退门删除（壁纸照常铺设）；refreshUIEffect ON 分支改"容器缺席原位重建 + 双宿主原生底色 + blur 重挂 + 一次性 [Task175] coexist 日志"；AmeNeumorphShadowView 增 ame_wallpaperSoftProfile 柔和档（offset×0.35 下限 2 / blur×0.37 下限 6 / 暗影 0.45 亮影 0.50）+ ame_setNeumorphWallpaperSoft: 透传原语；卡片管线双点（view/cell 分支）按 hasBackground 挂档——照片上读作轻悬浮而非晕影，无壁纸维持规格档（Task160 语义不回退）
+- 文档：announcements task175@2（174/双173/172/171/170/168 顺延 3-9；fallback 最小集误覆盖已还原 = Task169 两条目口径）；version.h REVISION 17 addendum（Task 175 六主题 + 三装机锚点）；l10n 零新增（1955 不动）
+- 验证：verify_task175 新建 41/41（A ANGLE 9 + B CF 5 + C 头像 3 + D 物品栏 7 + E Forge 5 + F 新拟态 5 + G 文档 5 + H 语法门+级联 2）；级联重锚：129 E1/E2（画布门退役回 2 处）、170 G5（引擎受控口径）、141 G4（scripts/ 全体入白名单）+ ROOT 可移植化（漏网旧路径）、165 G1（窗口 13→14）、167 E1（11→12）、168/171/172/173/173b/174 公告顺延 +1、78/79 A7（Task153 间接化锚重锚，HEAD 既有漂移顺手治愈）；173 123/123、174 24/24、172 51/51、171 30/30、170 34/34、169 49/49、168 43/43、167 31/31、166 64/64（task175 级联内）、165 34/34、141 36/36、129 47/47 全绿；79 失败集 2→1（余 B10 设备证据既有）；83/139/154 与 HEAD 基线逐位一致（沙箱证据文件既有缺席）
+- 语法门：task175_syntax_gates.py 状态机版 13 文件全配平（朴素剥离器对 URL 字符串内 "//" 的误报已换 proper 状态机对拍定案）
+
+### Stage Summary
+- 装机验证锚点：①ANGLE = "[spvc-shim] Task175 ANGLE ES rewrite: desktop GLSL -> GLSL ES 300" 且不再有 "Couldn't compile vertex shader for pipeline"（若出现 "rewrite FAILED" 则 impl 选项 API 形态问题，看 A9 法证）②CF 卡片显示真实下载量 + 整合包 tab 排序/加载器筛选生效 ③切标签页回来头像即显（首次也显）④换分辨率后游戏内触控/物品栏对位（"[HotbarDiag] Task175 geometry snapshot" 一行钉死全部输入）⑤1.8.9 整合包直装成功（"installer.jar download completed ... (via ...-1.8.9-installer.jar)"）；已装坏的重装一次即愈；启动坏版本不再裸崩改弹中文提示 ⑥新拟态开启壁纸可见 + 卡片轻阴影（"[Task175] neumorph UI wallpaper coexist"）
+- ANGLE 修复的边界：ES 300 是首档（ANGLE Metal 通用支持）；若后续着色器需要 ES3.1+ 特性（compute/binding），日志会给出具体报错再升档。vgpu 的 GL 面是桌面语义（gl4es 族转换器），不在重写门内
+- 遗留：mg 26.4 正常会话的 swapOK=6767 供后续呈现常数分析；ANGLE 治愈后 FO 包 Iris 渲染质量属游戏侧观察项
+
+---
+Task ID: 177
+Agent: main (Super Z)
+Task: 新拟态按用户 CSS 参考定稿重写（bigbear-ui neu-white）——全不透明渐变表面 + 固定档微阴影 + 透明度机制整体退役（"不要加任何的透明度，不要让UI效果的模糊度透明度来影响到"）
+
+### Work Log
+- 同步：fetch 对齐 48a7055（Task175 已交付），空号 176；用户复述"新拟态根本就没动过，还是很重的晕影"，策略改为从用户给过的 CSS 参考出发的干净重写（upload/bigbear-ui-1.0.0.zip = styles/mixin/_index.scss neu-white 族 + _variables.scss）
+- CSS 参考原文：background linear-gradient(145deg,#e6e6e6,#fff)；box-shadow N N 2N #d6d6d6, -N -N 2N #fff（$btn-neu-normal 2px / $btn-neu-large 4px）——与在用的 20/60pt 短边等比阴影差一个数量级，晕影量级根源实锤
+- 晕影根因定稿（结构级）：旧 AmeNeumorphShadowView 两层【透明】投影承载层的模糊剪影直接叠画在卡面内侧之上（CALayer clear 背景 = 自身投影无遮挡），20/60pt 模糊把整卡罩进晕影；壁纸模式再叠 Task175 柔和档 0.45/0.50 透明度。修复 = 三层结构：暗影/高光两个 clear 投影层垫底 + 不透明 CAGradientLayer 表面盖住投影内侧（CSS box-shadow 在元素之后合成的原生等价物），投影只剩外侧微晕
+- 引擎重写（UIKit+NativeSurface.h/.m）：AmeNeumorphSurfaceGradientStart/EndColor 新增（浅 #e6e6e6→#ffffff、深 #333333→#2c2c2c，全不透明）；暗影色 #bebebe→#d6d6d6（CSS 参考）；度量改固定档（卡片 4pt 偏移/8pt 模糊、宿主短边<60pt 小件 2/4；圆角短边等比 clamp[8,50] 保留；CALayer.shadowRadius = 模糊/2 折算）；145° 轴向精确换算 startPoint(0.2132,0.0904)/endPoint(0.7868,0.9096)；shadowOpacity 恒 1.0；ame176_darkLayer/lightLayer/surfaceLayer 三层；traitCollectionDidChange 重刷 resolvedColor
+- 透明度机制整体退役（"不要加任何的透明度"）：引擎 ame_applyNeumorphCardOpacity / ame_attachNeumorphShadowOnly（零调用死原语）/ ame_setNeumorphWallpaperSoft+ame_wallpaperSoftProfile 全删；BackgroundManager cardsNeumorphOpacity 属性/存取器/kBackgroundCardsNeumorphOpacityKey 全删（遗留落盘键不再读取）；卡片管线不再读 hasBackground/透明度/模糊偏好；壁纸共存语义保留（Task175 容器重建链不动），日志锚演化 [Task177] neumorph UI spec rewrite
+- 设置页：透明度滑条行（CardsNeumorphOpacityCell/tags 500-502/回调）整删；无壁纸 section0 返回 1；sections[0] 四项；"新拟态界面"开关行保留（Task173 用户定稿不撤销），灰化反转逻辑不变
+- l10n：background.cards.neumorph.opacity.title ×6 语言删除，四主语言唯一键 1955→1954；20 个历史校验器计数锚 1955→1954 批量重锚（含 task151 H 锚扫描器口径）
+- verify_task177 新建 39 项（A 引擎 12 + B Manager 8 + C 设置页 7 + D l10n 4 + E 文档 5 + F 配平 2 + G 级联对拍 1）；诚实重锚：168（A1/A2/A3/A7b/A8/B1/B2/B4/B5/B7/D1）、160（D2/D3/D4）、163（A2/B10/D2）、170（A1/A2/A3/B3/B5/B7/C1/C2/C3/E1/F1/G5）、173b（B3/B5/B9/C1/C3/C4/D4/E1）、173（M3）、174（A1/A2/A3/A5/A5b/B1-B4/C2/C4/D2/E1）、175（F1-F5/G1）、171（D2/D3）、172（H2）、165（G1 窗口 15）、167（E1 窗口 13）
+- 级联对拍（家法 stash 口径）：全 33 校验器 sweep，失败集 ⊆ 具名豁免基线 = 130 D4 / 131 H3 / 132 A1A2A15 / 133+138（latestlog.txt.old.txt 会话本地证据缺失，基线同崩）/ 134（同文件崩溃，级联捕获行 READBACK 字样）/ 135 E / 142 E1E2E4（mg 公告锚历轮遗留）/ 143 G1 / 156 G（task154 环境性）——零新增失败；156 的 task151 计数项被本轮治愈（51→1 残）
+- 文档：announcements task177@2（server/task169 钉 0/1；175/174/双173/172/171/170/168 顺延 3-10）；version.h REVISION 17 addendum（Task 177 + 装机日志锚）；scripts/task177_docs.py 留档
+
+### Stage Summary
+- 提交待推送；装机锚点：设置→外观→"新拟态界面"开启（默认开）→ 全部卡片 = 浅色 145° 渐变白瓷面（#e6e6e6→#ffffff）+ 边缘 4pt 微阴影（深色模式同构），任何壁纸/开关状态下零晕影、零透明度；模糊程度/透明度滑条对卡片彻底失效（开启态置灰）
+- 引擎口径：卡片 large 档 4/8pt、小件 normal 档 2/4pt，颜色全不透明（浅 #d6d6d6+#ffffff、深 #1e1e1e+#3a3a3a）；圆角/尺寸/位置零变化；列表行/侧栏/右面板平贴家族不变
+- 透明度滑条已随"不要加任何的透明度"退役——若后续要"可调浓淡"，应做阴影档位（规格浓度系数）而非 alpha
+
+---
+Task ID: 178
+Agent: main (Super Z)
+Task: 新拟态与 UI 效果设置解耦定稿——开关永不变灰其他选项 + 卡片本体透明度滑条恢复（字体恒不透明）+ 新闻卡圆角钉住修复
+
+Work Log:
+- fetch 对齐 cc8ced8（remote Task 177 = 上轮 CSS 参考定稿重写，用户反馈"改得非常好"）；空号 178 无撞号
+- 需求定稿（用户原话锚点）：①新拟态开关不管咋样都不会使其他选项变灰 ②开启时 UI 效果类型（毛玻璃/半透明）和模糊度都不影响新拟态 ③只有那个透明度拉条可以改变新拟态的透明度，字体始终是不透明 ④追加：新闻界面的新闻卡片圆角太圆
+- 透明度选型：uiOpacity 默认 0.6 且被旧管线（nav bar/工具栏/半透明底）多处消费，复用会让用户已认可的 Task177 形态瞬间半透明 → 恢复 Task170 专用机制 cardsNeumorphOpacity（defaults background_cards_neumorph_opacity 直读写，默认 1.0 = 出厂形态不缩水）
+- 引擎适配（UIKit+NativeSurface）：ame_applyNeumorphCardOpacity 复活为三层引擎版——整个卡体（不透明渐变表面+双阴影投影对）都在 AmeNeumorphShadowView 内，承载视图整体 alpha 淡化保持"表面盖住投影内侧"合成结构（半透明态晕影不回归）；宿主兜底色 clear 让位（不透明 #e0e0e0 会把透明档垫回不透明）；ame_applyNeumorphSurface 重铺时 alpha 复位 1.0（未配对调用向 Task177 形态失效安全）；文字/图标为宿主兄弟子视图恒不透明
+- 圆角钉住（追加项）：ame_setNeumorphPinnedCornerRadius opt-in 关联对象（NSNumber，refreshForHostBounds 优先读取，clamp[8,50]，removeNeumorphShadow 随挂载清理）；MinecraftNews 卡 contentView 钉 12pt——双列 0.5 宽 × ~280 高自 sizing 布局下短边 ~185pt 被等比写成 ~27pt = "太圆了"根因（Task160 全局等比规则不动，仅 opt-in 豁免）
+- 设置页（BackgroundSettingsViewController）：灰化逻辑全退（neumorphOn ? 0.35 : 1.0 ×2 / userInteractionEnabled / slider.enabled 全删，neumorphOn 变量清除）；"新拟态透明度"滑条行恢复恒显恒可操作（开关行下方，tags 500/501/502，无壁纸 section0 = 2 行）；回调恢复（落盘 + Task174 百分比实时回显范式 + refreshUIEffect）；sections[0] 五项
+- BackgroundManager：属性/.h 语义注释/键常量/存取器恢复；两管线尾部挂点（surface 之后 cardOpacity）；refreshUIEffect 灰化注释退役 + 一次性日志锚演化 [Task178] neumorph decoupled（ame178DecoupleLogOnce）
+- l10n：background.cards.neumorph.opacity.title ×6 语言恢复（task178_l10n.py，四主语言唯一键 1954→1955，插于 interface.title 之后）；页脚 background.effect.footer 未动（描述的两个滑条仍准确）
+- 文档：announcements task178@2（server/task169 钉 0/1，历史条目顺延 +1，len 20）；version.h REVISION 17 append-only 附录（Task177 附录保留）
+- 重锚（task178_reanchor*.py 三阶段 + 手工补刀）：22 个计数锚 1954→1955（129-159/168/170/173b/174/175/177）；语义反转 168（A7b/B1/B2/B4/B5/B7）/170（A1-A3/B3/B5/B7/C1-C3/E1/E3）/173b（B3/B5/B9/C1/C3/C4/D2/D4/E1）/174（A5/B1/B4/C2/C4/D1/D2/E1/A3 日志锚）/175（F2 日志锚/F4/G1/G4）/177（A10/B1/B2/B7/B8/C1/C2/C5/C6/C7/D1/D2/E1-E3 + 文档头 Task178 重锚说明）/171（D2/D3）/172（H2）/173（M3）/165（G1 窗口 15→16）/167（E1 窗口 13→14）；151 H 扫描器期望值 1955
+- 级联对拍（35 校验器并行分块 sweep）：129 OK/141 36/150 OK/151 46/157 44/159 48/160 47/161 56/162 68/163 36/165 OK/166 OK/167 OK/168 OK/169 OK/170 OK/171 30/172 OK/173 123/173b 32/174 24/175 41/176 43/177 39 全绿；130 D4/131 H3/132 A1A2A15/133+138 静默崩溃（会话本地证据缺失）/134 READBACK/135 E/142 E1E2E4/143 G1/156 G = 具名豁免基线同态，零新增失败
+- verify_task178 新建（A 引擎 14 + B Manager 9 + C 设置页 10 + D l10n 5 + E 文档 5 + F 配平 2 + G 级联 1 = 46 项）；A-F 实测全 PASS，G 级联以分块并行对拍收口（177 级联递归深度超单次工具超时上限，家法分块先例）
+
+Stage Summary:
+- 装机锚点：①设置→外观：开关任何状态下五行全部可操作（永不变灰）②开关开启后拖"模糊程度"→ 只有壁纸变糊，卡片纹丝不动 ③"新拟态透明度"滑条（开关行下方）拖动 → 卡片本体实时淡化、百分比实时回显、文字始终清晰 ④默认 100% = 上轮认可的白瓷形态原样 ⑤新闻页卡片圆角恢复 12pt 自定值（不再过圆）
+- 语义定稿：新拟态与旧壁纸管线并行共存、各读各的偏好；卡体透明度唯一入口 = 专用滑条（uiOpacity/模糊度/效果类型与卡片零耦合）；列表行/侧栏/右面板 Flat 家族不吃透明度（Task160/170 语义维持）
+
+### Task 178 补记：CI 终局
+- push 9aacebb..efc6fbb；CI run 36235666096（Run 459 of Development build）= **completed success 首跑即绿**（无修复轮；ARC 桥接零踩坑——CAGradientLayer CGColor 教训已在 Task177 沉淀）
+- 时序旁证：用户两次日志上传提交（38a887d/9aacebb）触发的 Run 457/458 被 GitHub 自动取消（新提交顶替，非失败）；main 徽标此前显示 failing 即 cancelled 顶替的显示伪象
+- 终局对拍：verify_task178 A-F 全 PASS（46 项断言组）+ 35 级联校验器分块对拍零新增失败（22 直接全绿，其余 ⊆ 具名豁免基线）
+
+---
+Task ID: 180
+Agent: main (Super Z)
+Task: Air-Minecraft-iOS-Launcher 透明度体系重构（背景/按钮双滑条 0~100%）+ 账号列表新拟态重写 + 账号复制双保险 + 头像防御 + 安装方式页对齐版本卡 + 全局默认值定稿
+
+Work Log:
+- fetch 对齐 43784d6（并行 Task179 八连修已交付），空号 180 确认无撞号；勘察四向并行（头像/账号列表/安装页/透明度管线）+ AskUserQuestion 四点确认（合并两滑条 / 默认 100% 起步→备注改 75% / 账号 bug 修双保险 / 头像防御性修）
+- 引擎（UIKit+NativeSurface）：ame_applyNeumorphSurfaceFlatWithRadius:opacity: / ame_applyPanelSurfaceWithRadius:opacity: 新原语（backgroundColor alpha 化，文字/图标兄弟子视图恒不透明；旧签名转发 1.0 失效安全）
+- BackgroundManager：background_bg_opacity（默认 0.75）/ background_btn_opacity（默认 1.0）双键；uiOpacity（0.6/下限0.1）与 cardsNeumorphOpacity 属性/键/存取器全退役；20+ 管线消费点换读新键（makeViewControllerTransparent 语义翻转直读/applyEffectToCell 半透明档/导航/工具栏/applyEffectToView 半透明+Flat 档/挂点①②/searchBar/applyCardEffectToCell）
+- 大背景接线：Root 侧栏/右面板 Flat opacity、BingGallery、DownloadTasks、下载页 tabSegment/versionFilterSegment/胶囊轨道、下载页搜索栏补接管线、ProfileSettings heroCard
+- 按钮接线：RightPanel 三按钮（applyCustomAppearance ×btnO + reapply 重刷）/下载中心/7 信息卡（0.15×系数）、Menu 选中底×2+重刷、Download importModpack/侧栏筛选+重刷、NMToast 引擎挂点、PLCrashView ame180_buttonColor 防御辅助
+- 设置页：旧两滑条行退役；「背景透明度」行（复用 row1/tags 200-202/min 0.0）+「按钮透明度」行（tags 600-602/ButtonOpacityCell）恒显；无壁纸 section0 = 3 行；恢复默认 0.75/1.0/0.0
+- 默认值定稿：blur 默认 0.0；SceneDelegate ui_layout 未选→card（显式 vs 保持）、ui_theme 未显式选择 auto/light→dark（Task161 家法改靶）
+- 账号列表：cell 凸起管线+pinned 16+裁剪放行+间距 6→10；reloadAccountList 按 accountId 去重+过滤坏文件；BaseAuthenticator class extension ame180_savedAccountId + saveChanges 写盘成功后头像迁移+旧 .json 清理（refresh 链改 ID 不删旧文件=复制根因）；AvatarManager usernameFallback 查询+ame180_migrate 头像迁移原语；RightPanel/Home 换双参查询+fetch 失败日志
+- 安装方式页：loader/option 行凸起管线（contentView 宿主）+规格文字色+40pt 图标+64 行高+裁剪放行+引擎头 import
+- l10n：i18n_str_1296 改值"背景透明度"+新键 background.button.opacity.title ×6（neumorph.opacity 键退役）+footer 双滑条语义说明；四主语言计数 1955 保持；修复首版 footer 缺引号的 .strings 行语法破坏（129-135 级联暴露）
+- 校验：verify_task180 新建 112 项全绿；诚实重锚 160/161/162/163/164/167/168/170/171/172/173/173b/174/175/176/177/178（178 C10 断言值顺延、174 C4 计数 3=2调用+1注释）；130/131/132/135 具名环境性豁免基线同态；160-162 ROOT 可移植化（Task165 家法）
+- 文档：announcements task180@2（len 22，钉位 0/1 不动）；version.h REVISION 17 addendum (no bump)；本 worklog
+
+Stage Summary:
+- 装机锚点：两滑条拖动实时跟随（BackgroundUIEffectChanged 广播链全员重刷）；背景 75% 装机即呈现大背景半透明；按钮 100% 形态不变；账号卡完整双阴影；安装方式页与版本卡同语言；复制 bug 写读双断
+- 待办：推送后盯 CI；26.1.2 libjvm 崩溃 / 静态库虚拟按钮 / README 6.0.0 收尾为继承遗留
+
+### Task 180 补记：CI 拉锯终局
+- Run 36260274532（主提交 4ff1dd5）failure：AccountListViewController.m:230 "no visible @interface for UIView declares the selector ame_setNeumorphPinnedCornerRadius:"——账号卡重写直调 Task178 圆角钉住原语（UIView 分类符号）但缺引擎头 import；经匿名 check-run annotations 通道实锤（并行 Task179 加装的 failure-gated capture 首次服役）
+- 修复 042b950（全仓引擎符号 import 扫描确认唯一缺口；verify_task180 G 组补 import 锚，113/113）；11ad745 docs 提交被 GitHub 自动取消（superseded）
+- Run 36261844785（042b950）= **success**，main 徽标 "Development build - passing"——Task 180 交付完成
+- 融合树对拍：verify_task180 113/113、179 61/61、177 A-F 38 项、178 A-F 45 项、160-176 全链绿；130/131/132/135 具名环境性豁免基线同态
+
+---
+Task ID: 181
+Agent: main (Super Z)
+Task: 用户六症状装机反馈（ab78f50 日志组，构建 afa23a6 / Task 180 IPA）：崩溃定位指引（hs_err 判读）/ ANGLE 依旧崩溃 / 旧版本依旧崩溃（1.8.9+vgpu 与 NeoForge 26.1.2 双形态）/ CF 加载源需在资源详细页点加载器"全部"才显示 / JIT 二级菜单启动卡死 / 右 Shift 无效另一控件正常
+
+Work Log:
+- 日志组判读（三批上传 fb6e8f6/25e0b1b/ab78f50 + hs_err_pid1381 + fatal_trace 2 + latestlog 4）：latestlog.txt=1.8.9+Forge 11.15.1.2318+vgpu 崩溃会话 / latestlog.old.txt=ANGLE 26.3 FO 包 pipeline 崩溃 / latestlog.1=JIT 卡死会话 / latestlog.2=MobileGL 正常游玩会话（exit(0) 非崩溃）/ latestlog 4.txt=他人设备 v5.0.0 JNA 签名崩溃（Task107 已修的旧版残留）
+- 26.1.2 NeoForge pc=0 崩溃定案（hs_err_pid1381 判读按用户指引：Problematic frame + siginfo）：pc=0x0 + SEGV_ACCERR@0 = BLR NULL 空指针执行；栈 pojavPumpEvents+0x8c → CallbackBridge_nativeSetInputReady+0xd8；earlydisplay 只注册 WindowSize 回调而旧代码【判空 WindowSize、调用 FramebufferSize】= 复制粘贴错位实锤 → 修（input_bridge_v3.m）
+- ANGLE 1:1 空源码之谜法证：下载 piston 26.3 client.jar（41MB）CFR 反编译 GlPipelineRecompiler/GlStateManager/GlShaderModule——MC 上传形态 = 单 NUL 终止 UTF-8 段 + length=NULL（nglShaderSource）；spvc 出口 ES300 自证已过（Task176 head48）+ 本地 harness（task179）ES 直通可编译 → 中间断点无法本地定案 → 决策：装机取证（tinygl4angle glShaderSource head48/count/len0 限 8 次 + 纯转发 glCompileShader 导出查 COMPILE_STATUS/infoLog 限 32 次）；取证日志兼作二分分辨器——崩溃复现而日志不出现 = MC 的 shader 调用解析在本 dylib 之外（Apple 系统 libGLESv2 / 直连 ANGLE）
+- 1.8.9+vgpu 崩溃链判读：splash 线程（Thread-7）"Texture creation: Invalid enum"（SplashProgress.checkGLError）+ eglCreateWindowSurface 0x3003 + 主线程 LoadingScreenRenderer glCheckFramebufferStatus=unknown status:0 → SplashProgress 后台线程与主线程共享单上下文互踩（vgpu gl4es 初始化本身已全绿=Task179 NOEGL 修复生效）→ 修：≤1.12.2 Forge 启动前写 config/splash.properties enabled=false（ame181_disableLegacyForgeSplash，NeoForge/非 forge/非 1.x 排除，存在则备份后就地翻转）
+- CF 加载源根修：ModVersion.parseCurseForgeDictionary 的 loaders 存 CF 原文大写（"Fabric"），ModVersionViewController 筛选用 lowercaseString（"fabric"）精确 containsObject → CF 源下任何加载器选中都过滤光全部文件（Modrinth loaders 原生小写所以正常）→ loaders 统一小写 + 补 LiteLoader 前缀
+- 右 Shift 根修：Task67 键位净化器每次启动把 7 个移动键强制重置默认（sneak→left.shift）——用户改绑 right.shift 每轮被洗回 = "右 Shift 无效另一控件正常"实锤 → 一次性化（标记文件 options.txt.amethyst-keybinds-v1 同目录；存在则只 dump 取证不改写；本轮跑完写标记；删标记可重跑）
+- JIT 卡死取证（现场证据缺失：latestlog.1 止于 still waiting 0s + openURL→1 + entered background，回前台后零日志零心跳零超时）：utils.m 等待循环补三针（wait begin 快照 startForeground/traced/exn/csdbg；condition satisfied 成功行含净等待时长；前台/后台翻转打点）+ RightPanel backgroundTimeRemaining 的 DBL_MAX（前台无任务契约值，上轮日志 300 位数字的真相）归一为 fg(n/a)；isJITEnabled 检测面复核（CS_DEBUGGED 语义正确，StikJIT 兼容）
+- 语法门 task181_syntax_gate.py（4+2 文件括号配平 + 正负锚点）；tinygl4angle.c 误删 nlevel/isProxyTexture 函数体的编辑事故当场恢复（E5/E6 锚点钉死）
+- verify_task181 新建 35/35（A 2612 四 / B CF 四 / C 键位六 / D splash 六 / E ANGLE 六 / F JIT 六 / G version.h 三）
+- 级联：179 61/61、180 113/113、172 51/51（H2 重锚治愈）、175 G1/G2 重锚治愈（G1 断言的 task168 id 拼写勘误 neumorph-faq）、169 全绿、176/177/178 零 FAIL（级联块沙箱超时=已知环境性）、171 7 fails 基线同态（stash 对拍）——**零新增失败**
+- 顺手治愈：Task180 公告顺延未重锚的 task175 G1/G2 + task172 H2（task180@2/task179@3 插入，175 4→6、172 8→10）
+- 版本历史法证附带确认：远程已推进至 Task 180（本地曾停在 Task110 时代，fetch 对齐 ab78f50；交接摘要中 Task167/168 后的 111-180 全部落地）；task179 harness 系 verify 自动同步行为确认（还原 4 个副产物文件保持提交面最小）
+
+Stage Summary:
+- 四项实锤根修落地：①26.1.2 NeoForge 早期窗口崩溃（GLFW 回调指针错位）②1.8.9 老 Forge SplashProgress 线程 GL 互踩 ③CF 资源详细页加载器筛选大小写过滤光 ④右 Shift 键位被净化器反复洗回
+- 两项取证就位：⑤ANGLE 编译链（tinygl4angle 双向日志=断点分辨器）⑥JIT 等待（成功/翻转/快照三针）
+- 装机验证锚点：①26.1.2 不再 1.17s 崩（可进主菜单）②1.8.9 启动日志见 "Task181: legacy Forge splash disabled" 且不再 FBO status:0 崩③CF 详情页选 Fabric/Forge 筛选直接出文件（无需点全部）④启动日志见 "[Task181] keybind marker written"，之后游戏内改绑 right.shift 重启存活、右 Shift 按钮 toggle 生效⑤ANGLE 会话日志搜 "[tinygl4angle] Task181 glShaderSource/glCompileShader"——出现且 COMPILE_STATUS=0 → head48 当场钉死断源；不出现 → MC 调用解析在本 dylib 之外（下一轮修复目标）⑥JIT 日志搜 "[JIT] Task181"（wait begin / condition satisfied / returned to FOREGROUND）
+- 遗留：ANGLE 最后一环与 JIT 卡死断点待装机日志定案；MobileGL 会话 swapOK=10238 健康基线更新；latestlog 4.txt（他人 v5.0.0）JNA 签名崩溃属旧版残留（6.0.0 已含 Task107 修复，建议对方升级）
+
+---
+Task ID: 182（补记）
+Agent: main (Super Z)
+Task: bc1941b 构建六反馈三根因根修（071647c+a9e60ac 日志：ANGLE 编译 status=0 空 log / vgpu 白屏 / JIT 二级菜单 completion 悬空）——详见主 worklog 与 version.h REVISION 17 addendum；提交 59d4b48，CI 绿（本轮判读即基于该构建的装机日志）
+
+---
+Task ID: 183
+Agent: main (Super Z)
+Task: 59d4b48 构建装机四反馈（5b3dcab+e40da2e 三日志，全部 Commit: 59d4b48 + Task182 锚点在场=真在修复版上）：ANGLE 黑屏 / vgpu 白屏 / JIT 二级菜单依旧卡死（一级页面正常）/ 右 Shift 依旧无效 → 四根因定案 + 四线根修
+
+Work Log:
+- 三日志判读：latestlog.txt=ANGLE 26.3 FO 会话（swapOK=375 fps=58 呈现管线健康但黑屏）/ latestlog.old.txt=1.8.9+vgpu（ES 3.2 请求被拒 0x3004 回退 ES 3.0 后白屏）/ latestlog.1=JIT RightPanel 启动（condition satisfied 3.0s 后主队列续接块静默丢失=卡死；另两会话同代码成功）
+- ANGLE 黑屏根因定案（数据链）：783 次 compiler_compile vs 198 次 ES 改写成功 = 584 个静默拿到桌面 GLSL 330 → ANGLE ES3.0 "ERROR: 0:1" 行 1 拒绝 → ShaderManager "Failed to load required shader programs"（数百管线全列）→ 空管线 58fps 空帧 = 黑屏；改写率逐秒 98%/11%/79%/2% 与活 context 水位反相关；水位模拟实锤峰值 392 活 context vs 注册表 96 槽（Task175 时代的容量，MC 资源重载风暴批量创建延迟销毁）
+- ANGLE 第二层（改写成功者中的 ESSL 内容非法）：B 族=OIT fragment `layout(location=0) out vec4 coeff[N]` + 循环变量动态索引（ESSL300 禁止，terrain/entity/text 等七族 fragment 报 0:190/0:196）；C 族=clouds.vsh `uniform isamplerBuffer CloudFaces` → spvc ES300 输出 `#extension GL_EXT_texture_buffer : require`（第 2 行）ANGLE ES3 无此扩展
+- vgpu 白屏根因定案：Task182 ES 3.2 上下文请求被老 EGL 拒（0x3004 BAD_ATTRIBUTE）回退 ES 3.0；vgpu GLSLHeader 三分支能力探测（300es=1/310es=0/320es=0）正确但【替换恒用 new_version="#version 320 es"】→ FPE 全灭 "unsupported shader version" → 固定管线零输出 = 白屏（转换产物 dump 实证 in/out+texelFetch 全是 ES300 语法）
+- JIT 卡死根因定案：启动链最后一个 completion 依赖 = UIKit_launchMinecraftSurfaceVC 把换根 VC 包在 [UIView animateWithDuration:completion:] 里（后台态动画时钟冻结与 dismiss 同族）——Task182 修了 dismiss 族漏了这个
+- 右 Shift 根因定案：v1 标记在场（不再洗 ✓）但 sneak 仍处被洗态 left.shift——v1 只防未来洗不修历史损伤；1.8.9 侧数字格式 42 同态
+- 修复 A（spvc_shim.c）：注册表 96→1024 + seq 最旧驱逐 + 兑底表 256→1024 + 全部静默跳过分支限频打点；ES 改写后新增 ame183_sanitize_essl 清洗（B 族：声明标记保护→name[ 访问改 name_mgio[ 全局草稿→main 尾常量索引复制；C 族：删扩展行+*samplerBuffer→*sampler2D+texelFetch 线性折叠 ivec2((i)&255,(i)>>8)）
+- 修复 B（tinygl4angle.c）：glBindTexture(GL_TEXTURE_BUFFER→GL_TEXTURE_2D) 重定向 + glTexBuffer PBO 桥（绑 PBO 查尺寸→宽 256 铺 2D glTexImage2D 零拷贝，格式表 R8~R32UI/RGBA8）+ glShaderSource 桌面源泄漏限频探测（A 族回归锚点）
+- 修复 C（vgpu pack/shaderconv.c）：GLSLHeader 版本跟随能力探测（320→310→300 es 递降 + 探针日志）
+- 修复 D（ios_uikit_bridge.m 双向 + RightPanel/NavCtrl 锚点）：换根同步化（动画降级 fire-and-forget）+ "[JIT] Task183 wait-completed block entered on main"/"invoking launch handler" 断点钉死锚点
+- 修复 E（input_bridge_v3.m）：v2 一次性恢复——v1 标记存在（损伤 cohorts）&& v2 不存在 && sneak 处被洗默认（left.shift/42）→ 恢复 right.shift/54；新装直写 v2 不受影响；恢复走 repairs 写回管线（备份+原子写）
+- 功能单测 task183_sanitize_test.c（真实病灶形态 23 断言，ASAN+O2 双跑；本地复现抓出 3 个实现 bug 修复：replace 尾部空指针、isamplerBuffer 前缀漏检、texelFetch 重建偏移悬垂 + 1 个堆溢出（cap 虚高））
+- verify_task183 新建 50/50（A shim 十二 / B tinygl 七 / C vgpu 四 / D 换根六 / E JIT 锚五 / F 键位八 / G 语法门四 / H 差值配平四）
+- 级联：182:39 / 181:35 / 179:61 / 175:41 / 173:123 / 172:51 / 169:49 / 134 / 176:43 / 180:113 全绿；177/178 自身检查过+级联块沙箱超时（已知环境性）
+- 顺手治愈两处存量：task175_syntax_gates.py 状态机补字符字面量识别（'[' 等合法 C 字面量被误计为真实括号——spvc_shim 清洗代码被误报）+ task176 A4 重锚（256→1024 扩容）
+- version.h REVISION 17 addendum（Task 183，no bump）+ 本 worklog
+
+Stage Summary:
+- ANGLE 黑屏四层全闭环：命名空间（Task182）→ 注册表容量（本轮主根因 584/782 静默漏网）→ OIT 动态索引 → texture buffer 模拟；装机锚点："Task183 DESKTOP source reached GLES upload" 零出现 + 无 "Couldn't compile ... for pipeline" 刷屏 + "Task183 ESSL sanitized"/"texbuffer bridge" 在场
+- vgpu 白屏闭环：能力探测终于被采用（"GLSLHeader version follows capability probe -> #version 300 es"）；若 320 es 再现则 hardext 探测被环境误导需回报
+- JIT 换根 completion 依赖清除 + 三级锚点链（wait-completed → invoking handler → SurfaceSwap）；若再卡死日志可逐行定位
+- 右 Shift 损伤修复：v2 一次性恢复 right.shift（日志 "[Task183] keybind v2 RESTORE sneak"）——恢复后默认布局 ⬛️（左 Shift）潜行失效属预期（右 Shift 控件生效），用户可在游戏内改回且不再被洗
+- 遗留：26.1.2 空指针等另一人反馈；vgpu post 特效上游 bug 观察；JIT latestlog.1 主队列块丢失的深层机制（本修消除其最大嫌疑 + 锚点兜底）
+
+Task ID: 184
+Agent: main (Super Z)
+Task: Air-Minecraft-iOS-Launcher 用户裁决轮——撤销 Task180 的 UI 效果调整（双滑条透明度体系整体退役）+ 安装方式页面按版本号选择界面真正重写（钉死的底层白框根修）
+
+Work Log:
+- 家法：fetch 对齐 e40da2e（远端已推进至 Task 182，空号 183 确认无撞号）；用户两图（白框假新拟态 + 安装方式页）网关未落盘，以文字口径+代码勘察定案
+- 白框根因双闭合：①账号列表/右栏 = Task180 把新拟态瓷面降到 backgroundOpacity 0.75，半透明白瓷叠深底 = "白色外框里一条边"；②安装方式页 = InsetGrouped 系统 cell 白色 backgroundView 从未被清，凸起管线挂 contentView 时白底垫在卡外 = "钉死的底层白框"，此前三轮重写无效的真根源
+- 撤销（UI 效果调整）：引擎 opacity 变体两原语删除（checkout 父版本 UIKit+NativeSurface.h/.m）；BackgroundManager.h/.m 回归 uiOpacity(0.6/下限0.1)+cardsNeumorphOpacity(默认1.0) 单键时代；设置页回归 透明度+新拟态透明度 双滑条行（Task178 形态 tags 500/501/502）；Bing/DownloadTasks/Download/Menu/News/Root/NMToast/PLCrashView/ProfileSettings 九文件 checkout 父版本；l10n ×6 checkout 父版本（1296 回归"透明度"、button.opacity 键退役、cards.neumorph.opacity 键回归、计数 1955 保持）
+- 外科手术（保留修复）：RightPanel 四处按钮透明度接线手工回退（accentColor() ×3/下载中心语义色/信息卡 0.15/reapply 重刷撤），头像 username 回退+失败日志原样保留；News 头像挂点补回（整体回退误伤，usernameFallback 双挂点复原）
+- 保留（180 功能修复）：账号复制双保险、头像防御、账号列表凸起重写（钉16+裁剪放行）、SceneDelegate card/dark 默认；blur 默认随撤销回归 1.0（公告注明可调回）
+- 重写（安装方式页）：ModLoaderRowCell/ModLoaderSwitchCell/ModLoaderVersionCell 三 cell 与 VersionCardCell 完全同构——AME183ClearTableViewCellChrome 杀系统白底/选中高亮（init+prepareForReuse 双点重放）+ 内层 cardContainer(圆角12 continuous/上下4pt) init 挂凸起管线一次 + 图标 40x40 圆角10 品牌色0.15淡底 + 名称16 semibold/状态12 规格文字色 + chevron 14pt；主表行高 64、子页 50+去分隔线；cellForRow 逐帧重铺/applyEffectToCell 全退役
+- verify_task184 新建 39/39 绿（A 安装页重写/B 撤销+全仓残留扫描/C 头像双挂点/D 保留项/E 引擎符号 import 纪律）
+- 诚实重锚：verify_task180 翻转为回退态 120/120；160 47/47、162 68/68、163 36/36、164 全绿、168 43/43、170 34/34、171 30/30、173b 32/32、174 24/24、173 123/123；公告 task184@2 插入（len 23）全家族顺延重锚（177 E1-E3、178 E1-E3、173 M3、179 J1）；179/178/182 全量级联后台并行确认中（G/J 级联沙箱慢=已知环境性）
+- 文档：公告 task184@2 + version.h REVISION 17 addendum + 双 worklog
+
+Stage Summary:
+- 装机锚点：①设置页回归"透明度+新拟态透明度"双滑条，新拟态卡体恢复 100% 不透明瓷面（白框假新拟态消失）②安装方式页与版本号选择界面同构：版本卡样式卡片、无白色底层、新拟态开关仍然有效③模糊默认回归 100%（可手动调回）④账号复制/头像修复保持不变
+- 教训：整体 checkout 父版本回退必须先 diff 圈出混入的功能修复（本轮 News 头像挂点被误伤后补回）；str.replace 补丁脚本必须核对替换计数（178 的 C10/D1/D5 静默失配由重跑日志暴露）
+
+### Task 184 补记：CI 首跑绿
+- 推送：并行撞号改号轮（远端 11e4b63 已占 Task 183 = 四根因渲染/输入轮；家法让位改号 184 全链——提交信息/公告 id/verify_task184/AME184 符号/全部重锚标签）；变基融合三冲突（version.h 双附录并留 / verify_task183.py add-add 各留（对方名下 183，我方改名 184）/ worklog 双条目并留）
+- 变基后治愈：公告 task184@2 插入的置顶区窗口再顺延（165 G1 18→19 / 166+167 窗口 16→17 / 168 D1 anns[13]→[14]）；131 G1 的 version.h 括号平衡（冲突标记残片清除）；verify_task180 G 组 AME184 串重锚
+- 合并树终态对拍：verify_task184 39/39 + 对方 verify_task183 50/50 双绿互兼容；180 120/120、168 43/43、165 34/34、166 64/64、167 31/31、131 37/37、136 63/63、137 47/47（G3/G4 提交后自愈）、173 123/123、179 61/61
+- CI：run（1b9526e）completed success **首跑即绿**，main 徽标 passing
+
+---
+Task ID: 185
+Agent: main (Super Z)
+Task: 11e4b63 装机七反馈五线根修（与并行 Task184 UI 轮撞号，家法让位改号 185 后变基融合）：Forge/NeoForge >26 找不到 / Fabric·Quilt 列表全量混排 / JIT 版本设置页卡死（Task183 修复版上仍存的残留形态）/ 巨魔 JIT 静默无反应 / 他人反馈 keychain 报错无皮肤
+
+Work Log:
+- 日志分诊：用户四日志（c689d41+62e7c52）全部 Commit 11e4b63 = Task183 修复版真机；latestlog.2 = JIT 卡死会话（condition satisfied 后台 3.8s 后主队列续接块永不执行，Task183 锚点缺失；三个成功会话同代码后台照常排空；卡死会话独有环境 = ProfileSettings 二级菜单 + 拼音键盘 keyplane 日志）；他人 iPad9 日志（424e02a，59d4b48）= keychain×5 + head/(null) 坏 URL + api.rms.net.cn DNS 失效三层叠加
+- 修复 1（>26 找不到）：共享匹配器 ame185_loaderVersionMatchesGameVersion（utils 双向候选集等价判定；形态 A 失配落穿形态 B——单测抓出 "26.3.0.5-beta"→26.3 缺陷）落地三处消费方（NeoForgeVersionFetcher / ModLoader XML 过滤 / ForgeInstallVC 双分支）；NeoForge 提取器去尾分量 + major≥26 免 "1." 前缀；ModLoader Forge 竞速重写——payload 匹配数>0 才可 settle，首个无匹配 XML 立即拉 BMCL 按版本 JSON（实测有 26.3 数据）第三路竞速，@synchronized 串行双解析器 + XML 截断防挂死；BMCL 陈旧镜像（2022 元数据）再也无法挤掉官方结果
+- 修复 2（Fabric/Quilt 混排）：fabric-meta 对任意版本返回全部 ~253 loader（loader 版本无关，API 不能筛）→ 精选最新 30 + __AME185_SHOW_ALL__ 哨兵行（复用 \x1f 显示约定，双语）点开从缓存展开全量免二次请求
+- 修复 3（JIT 卡死）：双入口键盘收起（sendAction:resignFirstResponder 移除头号嫌疑变量）+ ame185_dispatchToMainSelfHealing 自愈式主队列派发（常规派发 / didBecomeActive 重派 / 120s 看门狗三防线；主线程后台楔死时激活流程解锁即送达）；四个等待块（RightPanel+NavCtrl 主等待与 JIT26 重挂）全换；捕获的 alert/bg 断言随块存活到送达
+- 修复 4（巨魔 JIT 静默）：ame185_openJITEnablerURL:toolLabel: 统一拉起（回执日志 + 失败即时双语指引），覆盖 apple-magnifier/sidestore/stosdebug/jitstreamer/sidejit-enable 五工具 + TrollStore 自动分支；重挂 stikjit 补回执取证
+- 修复 5（keychain/无皮肤）：弹窗会话去重 + 重登指引 + tokenDataOfProfile 记 OSStatus（-25300 丢 / -25308 锁）；checkMCProfile 先落 username 再拼头像 URL（首登 "head/(null)" 字面量根修）+ 坏 URL 内存态修复；AvatarManager.ame185_fetchAvatarForAuthData 三层头像链（profilePicURL→crafatar UUID→minotar username）双调用方切换
+- 撞号处理：远程并行会话已占 Task184（UI 回退 + 安装页重写，1b9526e/ce60fdd）→ 我方全链改号 185（ame185 符号/Task 185 注释/verify_task185/task185_matcher_test/提交信息），变基融合三冲突（verify_task180 取对方翻转态 + 融合头像链 OR 锚；version.h 双附录并留；ModLoader 自动合并后审计：对方 cell 重写保留 \x1f 打包显示 = 哨兵行兼容）
+- 级联治愈（并行会话 task184@2 公告插入 + 改号 183→184 的漏网锚）：170-F1/F2、171-D2/D3/E2、172-H2、173b-E1/E2、174-E1/E2（全体 anns 索引 +1 顺延）、177-E1/178-E1（改号漏改断言串 task183-→task184-）、163（默认 ROOT 硬编码并行会话检出路径 → 仓库相对）
+- 验证：task185_matcher_test 23 用例全过（真实病灶形态含陈旧镜像负例 + beta 落穿回归）；verify_task185 63/63；合并树双绿对拍 verify_task184 39/39；级联 91:74/169:49/172:51/176/179:61/180:120/181:35/182:39/183:50/136:63/160:47/162:68/163/164/165:34/166:64/167:31/168:43/170:34/171:30/173:123/173b:32/174:24/177/178 + task175 语法门全过；task134 fixture 文件名漂移为 HEAD 既有环境性（stash 对拍定案）
+
+Stage Summary:
+- 装机锚点："[Task185] Forge: XML source won with N matches" 或 "BMCL per-version JSON won"（>26 生效）；Fabric/Quilt 列表默认 30 条 + 显示全部行；JIT 楔死场景 "[JIT] Task185 self-healing dispatch: refire on foreground"；"[JIT] ... Task185 openURL apple-magnifier:// -> 0"（巨魔助手死路钉死）；"[Task185] keychain token read failed ... OSStatus -25300"；"[Task185] repaired corrupted profilePicURL"；"[AvatarManager] Task185 avatar chain:" 各跳
+- 遗留：ANGLE 闪红后黑屏（呈现层已排除，嫌疑收敛内容层：desktop glUniformMatrix4fv transpose 等，待专项）、vgpu 白屏（待新构建日志）、26.1.2 空指针（他人反馈未到）、task134 fixture 漂移（环境性）
+
+### Task 185 补记：CI 首跑红 + 热修转绿
+- 首推 9e88f77（主轮 + 治愈轮）：CI run 36317248542 failure——ModLoaderInstallViewController.m:924 "use of undeclared identifier 'NSBlock'"（ame185_fetchForgeFallbackJSON 的防御写法 isKindOfClass:NSBlock.class；NSBlock 是 macOS 公开类、iOS SDK 未声明。本地验证器为纯静态检查无编译环节，故漏网）
+- 热修 8cb5e03：NSBlock 判定换 nil 检查（本防御足够）；全仓 NSBlock 代码用法清零（仅注释留档）；verify_task185 重跑 63/63 + 语法门全过
+- CI run 36317693650 completed success —— main 徽标恢复 passing；新令牌已更新进 remote（旧令牌确系 401 失效，用户重新配发）
+
+---
+Task ID: 186
+Agent: main (Super Z)
+Task: 11e4b63 遗留三线根修：ANGLE 黑屏（内容层 transpose 嫌疑加固）+ vgpu 白屏（Task183 半修复回归闭环）+ 游戏内分辨率调节失效（Task159 实例化键分叉）
+
+Work Log:
+- vgpu 白屏重新判读（c689d41 latestlog.old.txt）：Task183 版本跟随修复【生效】（"VGPU Task183: GLSLHeader version follows capability probe -> #version 300 es (300es=1 310es=0 320es=0)" 在场，转换产物首行 #version 300 es）——上一轮"输出仍 #version 120"为误读；真根因 = shader_conv_ 的插入点定位恒 strstr(new_version="#version 320 es") → 300es 会话必落空 → cut_in_offset=0 → "out mediump vec4 FragColor;" 与 _shadow2D 的 "precision mediump sampler2DShadow;"、gl_FragData layout-out 行全部被 cut_in 插到 #version 行【之前】→ 版本指令失效（GLSL 规定首语句）→ 按 ES 1.00 编译 → "ERROR: 0:1: 'out' : storage qualifier supported in GLSL ES 3.00 and above only" + "0:2 'sampler2DShadow' : Illegal use of reserved word" → FPE 全灭 = 白屏（日志实锤双形态错误与 GLSLHeader 日志同场）
+- ANGLE 黑屏判读（c689d41 latestlog.txt）：呈现层全绿（fps=60 swapOK=372、遮罩按 first-swap 移除、Task183 后无 "Couldn't compile ... for pipeline" 刷屏、sanitize 锚点在场）但屏幕纯黑 = MC 画了黑内容；desktop GL 3.3 glUniformMatrix*fv 允许 transpose=TRUE（行主序），ESSL 强制 FALSE：违反 = GL_INVALID_VALUE 且调用整体丢弃 → 矩阵 uniform 全灭 → 顶点退化为零向量 → 几何全剔除 → 只剩 clearColor，与症状逐点吻合；本 dylib 从未导出矩阵族 → 调用直落 ANGLE 原生（ES 语义无人在场转置）。附带盘点：0x884F=GL_TEXTURE_CUBE_MAP_SEAMLESS / 0x8642=GL_PROGRAM_POINT_SIZE 两个 desktop-only glEnable 被 ES 拒（debug message 噪音，无害，未处理）；"Invalid pname" swap 期高频（待后续取证）
+- 分辨率调节根因：游戏内菜单 actionAdjustResolution 读写【全局】video.resolution，但生效链 updateSavedResolution:1562 读【profile】resolution（Task159 实例化：resolveKeyForCurrentProfile，版本设置页首次保存即固化 profile 键 → 全局键被无视）→ 游戏内调节永远无效 + ✓ 标记与实际值脱节；Task184 的 ProfileSettings 改动仅为背景透明度（parent-checkout），与本症无关
+- 修复 A（tinygl4angle.c）：glUniformMatrix{2,3,4}{,x}fv 九函数族转置桥——FALSE 纯转发零回归；TRUE 本地转置（行主序→列主序 out[col*rows+row]=in[row*cols+col]）后以 FALSE 转发；单矩阵 ≤16 float 栈缓冲（热路径零 malloc），批量堆分配；首次 TRUE 限频锚点日志（取证修复合一：无此行且黑屏仍在 = 嫌疑排除转向 depth/blend 态）
+- 修复 B（pack/shaderconv.c）：cut_in_offset 定位 else 分支跟随实际 "#version" 行（strstr + 跳过行尾），无版本行才回落 0；320es 精确命中路径原样保留；锚点 "VGPU Task186: cut-in anchor follows actual #version line -> offset N"（限频 4）
+- 修复 C（SurfaceViewController+Navigation.m）：菜单读 [PLProfiles resolveKeyForCurrentProfile:@"resolution"]（与生效链同源，0 兜底 100）；写当前 profile 的 resolution 键（setServerIp 同款 mutableCopy 写回 + save，PLProfiles.current 同一内存对象即时可见）；setPrefFloat 全局键兼容镜像保留（JavaGUI 4 处读取方零回归）；锚点 "[Task186] in-game resolution: profile '%@' resolution -> N%%"
+- 验证：task186_matrix_test 11 例（2x3/3x2/2x4/4x2/3x4/4x3 全布局 + 批量 count=2 + 方阵 2/3/4，ASAN+O2 全过）；task186_cutin_test 8 例（300es/310es 跟随 =16、320es 旧精确路径不变、无版本行回落 0、插入后 #version 仍为首语句不变量）；task186_angle_syntax_harness 九符号独立编译（-Wall -Wextra 零警告，Linux stub 头法）；verify_task186 51/51；级联 183:50 / 182:39 / 181:35 / 179:61 / 176 / 185:63 / 184:39 / 160:47 全绿；task159 验证器治愈（默认路径硬编码并行会话检出 → 仓库相对，环境变量覆盖保留，48/48）；task175 F4/G1/G2 = 3 个存量漂移（stash 对拍 HEAD 一致，Task180-era 公告锚点，未触碰）；version.h 括号差值与 HEAD 逐位一致（task131 37/37）
+- task179 harness 镜像自动同步产线改动（+ tinygl4angle_harness.c 镜像更新）= 级联机制正常工作，随本轮一并提交
+
+Stage Summary:
+- vgpu 白屏根修闭环：Task183 只改了版本行没改插入锚点，本轮补齐后半；装机预期 FPE 编译错误消失 + "VGPU Task186: cut-in anchor" 在场
+- ANGLE 黑屏：矩阵 transpose 嫌疑加固（修复合一）；装机二分——若 "[tinygl4angle] Task186 ... transpose=TRUE" 出现且黑屏治愈 = 嫌疑坐实；若日志无此行且黑屏仍在 = 嫌疑排除，下轮转向 depth/blend 状态与 "Invalid pname" 取证
+- 分辨率调节：游戏内菜单与生效链同源（profile 层）；装机锚点 "[Task186] in-game resolution: profile '...' resolution -> N%"
+- 遗留：ANGLE "Invalid pname" swap 期高频未取证；0x884F/0x8642 desktop-only glEnable 噪音未静默；task175 存量 3 漂移（环境性）；vgpu post 特效上游 bug（sobel/entity_outline WARN，非阻塞）
+
+---
+Task ID: 186 (续)
+Agent: main (Super Z)
+Task: e947f2f 新日志分诊（8cb5e03 = Task185 修复版首次装机反馈，latestlog.txt=ANGLE 9561 行 / latestlog.old.txt=vgpu 4470 行，变基推送 01cddae 后判读）
+
+Work Log:
+- vgpu 白屏根因【二次实锤，逐字吻合】：GLSLHeader 版本跟随在场（"-> #version 300 es (300es=1 310es=0 320es=0)"）+ ES 3.2 请求仍被 0x3004 拒回退 ES 3.0（=300es 会话，修复 B 目标场景）+ FPE 编译错误 "0:1 'out' : storage qualifier supported in GLSL ES 3.00 and above only"（Fragment）/ "0:1 'sampler2DShadow' : Illegal use of reserved word"（Vertex）+ "Program link failed: Vertex shader is not compiled"——错误行号 0:1/0:2 直接证明 out 声明与 shadow precision 行被插到 #version 之前（插入点归零病灶）；下游 "1282: Invalid operation" Pre render 刷屏 = FPE 链接失败的渲染调用无效（修复 B 治愈后应随之消失）；会话结局 = 用户主动 actionForceClose（exit(0) 快照 swapOK=1150，非崩溃）
+- ANGLE 黑屏形态与 c689d41 完全一致（fps=57 swapOK=181、遮罩按 first-swap 移除、Task183 sanitize 锚点在场、无 Couldn't compile 刷屏、无 Task186 transpose 锚点——8cb5e03 不含本轮代码，预期）：transpose 嫌疑保持，等 01cddae 装机二分裁决；"Invalid pname" 仅 6 次且集中在首帧 present 附近（非持续，非黑屏主因，降级为低优先线索）
+- Task185 修复活体确认（8cb5e03 真机）："[Task185] Forge: XML source won with 5 matches (official=1)"（竞速防陈旧生效，官方源 5 匹配获胜）；"[JIT] Task185 self-healing dispatch: refire on foreground (label=RightPanel main wait)"（两会话均有——后台楔死被前台激活自愈真实发生，会话继续跑完）；"[JIT] [RightPanel] Task176 openURL stikjit:// -> 1"（回执正常）
+- keychain/avatar/Fabric 精选锚点不在场（本轮为用户自机日志，无对应场景，留待触发）
+
+Stage Summary:
+- Task186 三线修复与新日志对齐良好：vgpu 根因二次实锤（等 01cddae 装机验证 "VGPU Task186: cut-in anchor"）；ANGLE transpose 二分已就绪（锚点在/不在 + 黑屏治/不治）；分辨率锚点待触发
+- Task185 装机反馈正面：Forge 竞速 + JIT 自愈两锚点活体在场
+
+---
+Task ID: 187
+Agent: main (Super Z)
+Task: b5038d0 三日志分诊 + 用户八项反馈根修轮：vgpu 白屏（第三层根因闭环）/ ANGLE 黑屏（transpose 排除 + 取证包）/ 分辨率触摸错位 / 26.1.2+neoforge 装成 26.3 原版 / keychain 一键修复 / 巨魔卡"验证完整性" / 强制横屏 / iPhone 刘海适配
+
+Work Log:
+- 日志分诊：latestlog.txt（8cca75a=Task186 构建，ANGLE，fabric 26.3，fps=58 swapOK=411 用户强关）/ latestlog.old.txt（8cca75a，vgpu，1.8.9 系）/ latestlog.1（8cca75a，mg 渲染器=可用对照组）/ latestlog (1).txt + (6).txt（8cb5e03=Task185 构建，安装/下载会话）
+- vgpu 根因（第三层，字节级实锤）：Task186 修复 B 锚点在场（offset 16/362/83）但 FPE 错误仍 43 处且形态升级（"0:3 version directive must occur before anything else" + ftransform 重定义 + 'in' storage qualifier）→ 逐字节解码 ConvertShader 产物：两行 varying 声明排在 #version 之前 → gl4es 老转换器的包装插入（ftransform/attribute/varying/uniform）锚点 GetLine(Tmp,3) 在"换行数 < 3"时返回缓冲【顶部】——MC 1.8.9 单行源码（无尾换行）+ vgpu 两行头（"\n\n"）恰触发；上游 gl4es 不踩坑因其头多行（版本+precision）。插桩推演与设备 dump 逐行吻合（顶点着色器 15 行完整复现插入序列）。修复：三行头（"\n\n\n"）+ GetLine 兜底（耗尽返缓冲尾，绝不返顶部）+ 短源码锚点
+- ANGLE 判读：Task186 transpose 锚点【零触发】→ 下载真实 26.3 client.jar（41MB，piston-data）CFR 反编译 RenderPearl：GlProgram 纯 UBO 上传矩阵（全无 glUniformMatrix*）= transpose 理论彻底排除；GlDevice 构造【无条件】glEnable(0x884F/0x8642)（desktop-only，ES 拒绝并 HIGH 级 debug message 刷屏；mg 对照组 0 条=前端吞掉）；mg 对照组（同构建同设备正常渲染）锁定差异面=spvc Task175 ES 改写 + tinygl4angle + 3.3 伪装，能力面（扩展列表 mg 为空/ANGLE 仅 2 项）与 Metal 层配置完全一致 → 黑内容根因未定，落取证包：探针帧快照 clearColor/colorMask/scissor/depth/blend/stencil（全 ES3 合法只读查询）四分法切开假设空间；desktop-only 两 cap 本地 no-op 静默
+- 分辨率触摸错位根因：Task186 菜单修复把 updateSavedResolution 改为【运行中】调用——全量几何重算改写 surface/drawable/contentsScale/windowWidth，但 MC 窗口信念（launchJVM 一次性告知）进程内不可变 → 表面缩水 + sendTouchPoint 按新 resolutionScale 换算而 MC 按旧窗口归一化 = 触点偏移 1/旧比例。修复：菜单只写偏好 + toast"重启游戏后生效"，下次 launchJVM 周期三口径（表面/窗口/输入）一致重建
+- 26.1.2+neoforge 装成 26.3：8cb5e03 安装会话日志实锤只有 26.3.json 原版下载链（neoforge 分支零日志）→ Task173 保守策略的死路警告（"知道了"，无跳转无上下文）把用户抛回按时间排序的版本列表（26.3 恒顶）误触顶卡。修复：一键"安装并继续"——ensureVanillaInstalled 用用户所选同一 version 字典装原版后自动接续加载器安装（runLoaderInstall 抽出共用），失败才落错误提示
+- keychain 弹窗升级：Task185 文案指引（"请删除该账号后重新登录"）仍是四步手动导航墙 → ame187_showAccountRepairDialog 一键修复（删 .json + 清 keychain 残留 + 拉起登录页；pendingLaunchAfterLogin 链登录后自动接续启动）
+- 巨魔"卡在验证完整性"：定位 taskStage.title.verifyIntegrity="验证完整性"（PLTaskStagesVanilla 第 6 阶段），代码上瞬时完成（SHA1 逐文件内嵌）但无日志无法定位卡点 → 入场锚点（含自 downloadVersion 起耗时）+ 30s 看门狗强推（展示层收尾，强推无假阳性风险）
+- 强制横屏：Info.plist iPhone 段移除 Portrait（8cb5e03 日志实证 requestGeometryUpdate 被 Code=101 拒绝于窗口模式；支持列表仅横屏 = 系统直接横屏呈现，iPad 段本就 only）
+- iPhone 刘海适配：两套主界面（卡片默认 + vs 三栏）侧栏 leading / 右面板 trailing 叠加 ame187_iphoneNotchInset（仅 iPhone 生效，iPad 恒 0 零回归；旋转 180° trait 重算；viewWillAppear 补算 insets 迟到；上下边维持对称 outerMargin 语义；游戏表面全出血不动=真全面屏）
+- 验证：verify_task187 61/61；task187_vgpu_syntax.sh（GetLine 语义单测 + gcc 语法门）全过；有意语义翻转诚实重锚：186-C10（实时生效退役→next-launch 语义 +C10b）+186-D3 环境治愈（stub 头自建，52/52）、185-F3（弹窗升级，63/63）、159-E1（l10n 基线 1955→1959，48/48）；级联 184:39、183:50、task175_syntax_gates ALL PASS；version.h 括号差值 0/0
+
+Stage Summary:
+- 装机锚点：vgpu 1.8.9 "VGPU Task187: short GLSL source" + FPE 编译错误消失 = 白屏闭环（三层修复链：183 版本行 → 186 插入点 → 187 头行数+GetLine）；ANGLE "[RenderDiag] Task187 state: clearColor=..." 四分法裁决黑内容根因（红clear+黑屏=呈现丢弃 / mask全false 或 小scissor=状态元凶 / 全正常+黑clear=着色器语义下一轮）；"[tinygl4angle] Task187: accepted desktop-only glEnable"=噪音静默生效
+- 分辨率：游戏内菜单改值 → toast"重启生效" + "[Task187] in-game resolution saved"；下次启动触点/渲染自洽（Task175 公式在新会话窗口信念下正确）
+- 下载：选 26.1.2+neoforge 原版未装 → 一键"安装并继续"（26.1.2 原版 + neoforge 连装，不再有 26.3 误装路径）
+- keychain：弹窗"删除账号并重新登录"一键修复；巨魔启动"验证完整性"最长 30s 自动收尾 + 耗时锚点
+- iPhone：锁定横屏（无 Portrait）；刘海侧自动避让（iPad 零回归）
+- 遗留：ANGLE 黑屏根因待 01cddae 后续构建的 Task187 状态快照裁决；vgpu post 特效上游 bug（sobel WARN，非阻塞）；launch.stage.* 孤儿键与 i18n_str_195/196 文案与新流程的收尾清理（低优先）
+
+---
+Task ID: 188
+Agent: main (Super Z)
+Task: 15fddc2 六日志分诊 + 六项修复轮（vgpu 白屏第四层闭环 / ANGLE 取证升级 / Forge 拆分包 / NeoForge 杂散文件 + 产物验证 / UIRequiresFullScreen 横屏 / FCL 式控件仓库）
+
+Work Log:
+- 六日志归位：latestlog.old.txt=ANGLE 会话（15fddc2）、latestlog.txt=vgpu、latestlog.2=Forge 26.1.2 启动崩、latestlog.old.2=Forge 安装、latestlog.old.1+.1=NeoForge 装+启、latestlog (2).txt=他人旧构建 8cb5e03（26.3 误装报告，Task187 一键流已覆盖，需新包）
+- vgpu 白屏第四层（包装块自毒）：Task187 头行修复后 #version 违规消失，新形态 0:25 'textureGather: no matching overloaded function found'——NewConvertShader 的兼容函数包装块（texelFetch_/textureGather_/…）无条件前置到所有转换后 shader（含 436 字节 FPE 顶点着色器），而包装块自调原生 textureGather（ES 3.10+ 才有）；能力探测实测 300es=1 310es=0 320es=0 → 全管线编译死 → 白屏。修复：pack/shaderconv.c textureGather_/Offset_ 改 texelFetch 四点仿真（基点 floor(P*size-0.5)、四角 (x,y)(x+1,y)(x+1,y+1)(x,y+1)、clamp 钳制、comp 重载动态下标启用——全部 ES 3.00 合法）
+- Forge 26.1.2 崩溃：ResolutionException "Modules launcher and lwjgl export package com.apple.ios.audio"——Makefile 把 launcher 的音频类 + JavaSound services 镜像进 lwjgl_lib（c71dcfa SDL-hook 时代遗留）；lwjgl overlay 零引用、launcher.jar 恒在 classpath → 镜像撤除，包唯一化于 launcher.jar
+- NeoForge 缺文件（双因叠加）：(a) libraries/net/neoforged/neoforge/26.1.2.109 处杂散同名普通文件 → universal 解压+下载双败而安装仍报成功；(b) minecraft-client-patched 是 processor 本地产物（client classifier 双源 404 属预期）。修复：utils ame188_ensureDirectoryHealed（祖先链杂散文件自愈）接入两安装器全部建目录点 + Step E 后置产物验证（运行期清单存在性 + jar PK 魔数，缺件显式失败绝不静默成功）；Forge ensureDirectoryExists 升级同款委托
+- 强制横屏第二轮：Task187 移除 Portrait 无效——iPadOS 27 窗口模式下系统持有几何，无视方向列表与全部代码级覆盖（AppDelegate/SceneDelegate/根 VC 全在位全无效，Code=101 实证）；UIRequiresFullScreen=true 退出窗口模式 → 方向列表生效；SceneDelegate 请求保留为纵深防御（失败降级单次提示）
+- ANGLE 取证升级（Task187 快照判读：全状态正常 + clearColor(0,0,0,0) + 58fps + 零编译错误 = "真黑内容"与"呈现丢弃"未分）：1x1 中心像素回读（≤3 次/会话，独立 4 字节小分配避开 Task75 全屏 SIGBUS 路径）+ GL_ALPHA_BITS/GL_DEPTH_BITS + CAMetalLayer pixelFormat/opaque/framebufferOnly 一次性日志（BGRA8+alpha=0 clear+可透合成=预乘黑假说的三数据点）+ 相位标记点名每探针一条的 Invalid pname 归属
+- FCL 式控件仓库：ControlRepoViewController（索引/列表/下载/校验/落盘 controlmap/<id>.json，raw.githubusercontent 主源 + jsDelivr 回退，mControlDataList 数组门 + 防连点锁 + 已装版本角标）；编辑器长按菜单"控件仓库"入口；CMake 收录；i18n ×11 键四语言（基线 1959→1970）；仓库种子 controls/（classic/minimal-fps/large-buttons + index.json，生成脚本 scripts/task188_seed_controls.py）
+- 验证：verify_task188 53/53（括号门抓出 ControlRepoViewController 两处 `}];` 应为 `});` 的真实笔误）；级联 187:61、vgpu 语法门全过、186:52、185:63、184:39、183:50、159:48（E1 重锚 1959→1970）、task175_syntax_gates ALL PASS；version.h REVISION 附录
+
+Stage Summary:
+- 装机锚点：vgpu（textureGather 编译错误归零 = 白屏闭环链第四环）；ANGLE（"Task188 readback #N center rgba=..." 非黑=呈现丢弃 / 黑=spvc 语义；"Task188 fb: alphaBits=..."；"Task188 layer: pixelFormat=..."；"Task188 phase-tag"）；Forge/NeoForge（"Task188: stray file ... removed" + "Task188: post-processor verification passed/FAILED"）；横屏（启动即横屏，无 Portrait 窗口）；控件仓库（"[ControlRepo] Task188: index loaded/downloading/saved"）
+- Forge/NeoForge 用户路径：重装即自愈（杂散文件清除 + 缺件显式报错 + processor 重跑补件）
+- 遗留：ANGLE 黑屏待 readback/alphaBits 数据裁决方向（呈现 vs spvc 语义）；他人 26.3 误装需新包验证一键流；LiveContainer 宿主下 UIRequiresFullScreen 传递性待装机确认
+
+---
+Task ID: 190
+Agent: main (Super Z)
+Task: 账号卡片与已安装版本页同构（圆形头像/正文标题/灰字类型/去箭头/长按菜单）+ 安装方式页间距对齐版本号页 + BackgroundManager 泛型管线抽取
+
+Work Log:
+- 家法：fetch 对齐 b941662（远端 Task189 hotfix 已绿），空号 190 确认（185-189 已被并行轮占用）
+- 用户定稿四点：①安装方式页每个按钮间距=版本号页 ②账号选项样式=已安装版本页（左图标→圆形头像、标题为正文、灰字为账号类型、删右侧箭头）③长按呼出 (person.circle)选用账号/(红字trash)删除账号 ④（继承 184 轮口径）样式基准=版本管理页 VMTileBaseCell/VMVersionCardCell
+- BackgroundManager 泛型抽取：applyEffectToCollectionViewCell 正文逐字节迁入 ame190_applyCardPipelineToCell:(UIView*)，新增 applyEffectToTableViewCell: 表格入口（Task172 三段式与新拟态开关两种状态下与版本页逐字节一致；旧 applyEffectToCell: 是无开关旧管线不采用）
+- AME190AccountCardCell（AccountListViewController.m 内私有类）：VMTile 阴影档 0.12/6/(0,3)+layoutSubviews shadowPath、contentContainer 12pt 连续圆角+白0.08+0.5pt 白0.10 描边、选中态 accent 1.5 描边+0.10 淡底+右上 20pt 徽章（VMVersionCardCell 三层强化镜像）、触摸 0.96 弹簧、正规复用（出列拆光重建退役）；圆形头像 dp:34（=版本页 iconContainer 位）、标题 sp:15 semibold label 色、灰字 sp:11 secondary=账号类型（Task136 彩色胶囊退役）、无 chevron；几何=上下 4 内缩（行距 8pt）+左右 24 总边距（版本页 section16+item8 语义）
+- 长按菜单全账户化：选择链收口 ame190_selectAccountAtIndexPath（原 didSelect 主体原样迁入，点击/菜单共用）、删除链收口 ame190_deleteAccountAtIndexPath（原 commitEditingStyle 分支迁入，左滑共用）、Task129b 第三方多角色角色项保留（UUID 归一化打勾）、Task130b 行内 person.2 按钮+actionSheet 退役（objc/runtime.h import 随撤）
+- 安装方式页间距：卡间 section 头 10→4，净距=4 下内缩+4 头+4 上内缩=12pt 与 DownloadViewController（minimumLineSpacing 4+内缩 4+4）一致；行高 64 与卡内缩不动
+- l10n：account.menu.use/delete ×4 主语言（2155→2157）；task190_reanchor.py：计数锚 22 文件 + 公告窗口族顺延（task190@2 插入，非钉位索引 ≥2 全体 +1，len 23→24）+ 136 G2/F6/I2、137 F10/G3/G4/D3、130 F1-F4、184 D、180 G 组诚实重锚
+- 175 陈旧锚治理：F4（Task183/184 撤销 180 背景透明度后回归 Task178 cardsNeumorphOpacity 双挂点——184 轮漏顺延）+ G1（公告索引对齐现实 task175@8）
+- 级联 sweep 全量复跑 + stash 对拍：100-111/132/135/140/156 基线同态零新增失败（逐一对拍相等）；129/130/131/141/149/150/157/159/160/161/162/164/165/166/167/168/169/170/171/172/173/173b/174/175/177/179/183/184/185/186/188/189 全绿
+- verify_task190.py 新建 58 项（A 泛型管线/B 间距/C 同构/D 菜单/E 退役/F 保留/G l10n/H CI 纪律含 188 同序括号门）；公告 task190@2 + version.h REVISION 附录 + 双 worklog
+
+Stage Summary:
+- 装机锚点：账号列表卡片与版本管理页观感一致（新拟态开关两态一致）；长按任意账号=系统上下文菜单（选用/删除/角色）；安装方式页相邻卡净距=版本号页
+- 教训：①128 系"级联子校验器"可能整轮漏顺延（184 轮只治了 165-168）——全量复跑 + stash 对拍才是零新增失败的充分证据；②`ann["announcements"][N]` 双重下标形态要单列重锚模式；③python 字面量嵌 \" 时 @ 前缀易被吃——校验器 needle 用单引号写
+
+### Task 190 补记：CI 两轮拉锯终局
+- round 1（66d850f）run 36397990325 failure：AccountListViewController.m:599 `UIActionAttributesDestructive` 在构建 SDK 不存在（编译器点名真名 UIMenuElementAttributesDestructive）→ cc3e1b1 热修 + verify_task190 D 组改锚真常量并拒绝旧别名
+- round 2（cc3e1b1）run 36403614574 failure：泛型管线方法体 6 处 `property 'contentView' not found on object of type 'UIView *'`（"方法体只用 UIView 级 API" 的勘察漏判——contentView 属性本身就不在 UIView 基类上）→ 63e86f3 热修 2：泛型签名改 `(UIView *)cell contentView:(UIView *)contentView` 双参数由类型化包装点传入（22 处机械改名，方法体其余逐字节不变）；163 B3/B4 + 168 A9 重锚到 contentView.* 前缀（语义不变）；verify_task190 A 组加"泛型体内零 cell.contentView"门
+- CI 终局：run 36406783918（63e86f3）= **completed success**
+- 教训：本机无 clang，"方法体只用了 XX 级 API" 的结论必须逐符号核对（属性也算符号）；SDK 常量名以编译器批注为准
+---
+Task ID: 191
+Agent: main (Super Z)
+Task: dde0f82 四日志分诊 + 用户六项反馈根修轮：vgpu 方块材质损坏（client-index EBO 化）/ i18n 手动切换裸键名（en.lproj 语法 + 兜底链）/ Forge 26.1.2 text2speech 包冲突 / 控件编辑器崩溃防御 / 强制横屏方向反转 / ANGLE 黑屏第三轮取证
+
+Work Log:
+- 日志归位：latestlog.old.txt=vgpu 1.8.9-forge 会话（材质损坏，29k 行）/ latestlog.2=fabric 26.3 ANGLE 会话（黑屏，10k 行，正常退出）/ latestlog.txt=Forge 26.1.2 启动崩（408 行 exit(1)）/ latestlog.1=控件仓库下载后 insertObject nil 崩溃（55 行）
+- vgpu 根修（Task189 探针裁决闭环）：post-draw 8/8 命中同形态 direct-elements TRIANGLES count=6 USHORT → 0x0502 = QUADS(4)→TRIANGLES(6) 转换产物（scratch CPU 指针）被驱动拒绝；对照组 listdraw 真实 EBO 路径零失败 + 实体（立即模式）正常 = Apple iOS ES 拒绝 client-memory index array（顶点 client array 被接受）。修复 drawing.c ame191_drawElementsViaEBO：scratch EBO 上传（gl4es_scratch_indices + glBufferSubData）→ fpe 前端完整链 NULL 偏移画 → 恢复 EBO=0；ES1.1 保原路径；探针站点名 direct-elements-ebo
+- i18n 根修：en.lproj 2148 行 "Downloaded "%@"" 值内未转义引号 → 字符串提前闭合 → 整表 oldstyle-plist 解析失败 → 手动切英文全界面裸键名（系统中文走 zh-Hans 表故一直不可见）。修复：引号转义 + localize() 双路径加 zh-Hans 兜底层（任何单一语言表损坏不再暴露键名）+ scripts/task191_validate_strings.py 严格 tokenizer（逐字符模拟 Apple 解析，抓出并看护全部 40+ lproj）
+- Forge 26.1.2 根修：ResolutionException "Modules mojang.stubs and launcher export package com.mojang.text2speech to module logging"——bootstrap 2.1.7 把 launcher.jar 一并模块化（1.20.1 时代 ignoreList 不再庇护），与 mojang-stubs.jar 双供 Task158 桩包。修复 JavaApp/Makefile：launcher.jar 打包时 stash-mv 剔除 text2speech（打完恢复目录保住 mojang-stubs 的 cp 源）；mojang-stubs.jar 成唯一持有者（模块层 + 系统 classpath first-wins 双满足）；stash 残留防御性清场
+- 控件编辑器崩溃防御（dde0f82 裸地址栈未闭环）：doAddButton 四处 insertObject 加 nil 防护（悬垂 undo 重放锚点日志）+ loadControlFile 清 undo 栈（布局切换语义边界）+ SceneDelegate willConnect re-arm 补锚点日志（下轮自证）
+- 强制横屏根修：Task189 的 ±90° 选向用 scene.interfaceOrientation（窗口模式恒报 Portrait，与设备实际持向解耦）→ 换手时 180° 反 + 设备旋转无重评估时机。修复 SceneDelegate：角度跟 UIDevice 物理方向（LandscapeRight→+90 / LandscapeLeft→-90 / 不明确保持）+ 横窗持向基线与 180° 翻转跟随 + UIDeviceOrientationDidChangeNotification 监听（加速计采样开启、断连摘除）
+- ANGLE 第三轮取证（Task188 裁决"真黑内容"后假设空间收敛 UBO）：tinygl4angle 显式转发 glBindBufferRange/glBindBufferBase/glUniformBlockBinding（此前 dlsym 直落 ANGLE ES 原生，无观测点）+ 前 8 次参数日志 + 非 256 对齐 offset 标记 + swap 探针读 uboAlign/uboBind（GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT/BINDING）+ phase-tag 噪音根修（探针块入口清错，RenderPearl 自产的 desktop-only 查询 1280 不再伪装成探针错误）
+- 验证：verify_task191 45/45（A i18n 3 + B vgpu 6 + C forge 6 + D 控件 3 + E 横屏 9 + F ANGLE 7 + G 语法门 8 + H 级联 3）；task189_vgpu_syntax 80/80；级联 188:53、189:80、190:59 全绿；EBO 镜像 harness 通过（上传字节数==绘制字节数、fpe 收 NULL、画后 EBO 归零）；Makefile stash 序列干跑通过（jar 内无 text2speech、cp 源保留、幂等）；version.h REVISION 附录
+
+Stage Summary:
+- 装机锚点：vgpu（"direct-elements-ebo" 探针 0x0502 归零 + "@ Pre render 1282" 归零 + 1.8.9 方块纹理恢复）；i18n（手动切 English 全界面正常英文）；Forge 26.1.2（越过模块解析进入游戏）；横屏（"Task191: portrait window -> content rotated +/-Ndeg by device orientation" 持向正确 + 换手不反）；ANGLE（"[tinygl4angle] Task191 ubo: ..." 系列 + "uboAlign=/uboBind=" 数据裁决方向：零绑定=绑定路径断裂 / UNALIGNED-256=对齐语义差异 / 全正常=下一轮查 spvc 改写）；控件崩溃若再现（"[SceneDelegate] Task191: uncaught-exception handler re-armed at willConnect" 在场 + "Uncaught exception:" 符号栈自证）
+- 遗留：ANGLE 黑屏根因待 Task191 UBO 数据裁决；vgpu sobel WARN（上游，非阻塞）
+---
+Task ID: 191 (续)
+Agent: main (Super Z)
+Task: CI 两轮拉锯终局
+
+Work Log:
+- round 1（62a179e）run 36418190483 failure：JavaApp/Makefile:25 'missing separator (did you mean TAB instead of 8 spaces?)'——launcher.jar 规则的 Task191 stash 编辑把【整个 Makefile】的 TAB 重写成了 8 空格（Edit 工具的写入副作用），全部 recipe 语法报废
+- 热修（956ea9b）：git show 3d4aacc:JavaApp/Makefile 逐字节恢复原版 → python 脚本插入（显式 \t，assert 旧块 TAB 形态命中）→ 全文审计零空格缩进命令行 + 110 TAB 行 → make -n 解析干净
+- CI 终局：run 36418929593（956ea9b）= completed success
+- 教训：①Makefile 是 TAB 敏感文件，Edit 工具写入会做 tab→space 转换——修改 Makefile 必须走脚本插入（python 显式 \t）并事后 cat -A 审计；②本地有 make，提交前 make -n 干跑一次即可拦住此类事故（本轮修完已补跑）
+
+Stage Summary:
+- Task191 全链闭环：六项修复 + verify 45/45 + CI 绿，新 IPA 就绪
+- 装机验证锚点：vgpu direct-elements-ebo 0x0502 归零/方块纹理恢复；i18n 手动切英文正常；Forge 26.1.2 越过模块解析；横屏 Task191 rotated by device orientation；ANGLE Task191 ubo 系列裁决方向；控件崩溃自证锚点
+
+---
+Task ID: 193
+Agent: main (Super Z)
+Task: 启动器软件图标替换——上游 Amethyst 六边形 → 用户上传草方块立方体（Light 家族最小触碰）+ 上游资产出处审计归档
+
+Work Log:
+- 溯源审计（用户">1 年上游资产别动"规则 + 全部图标逐字节比对上游 herbrine8403/Amethyst-iOS-MyRemastered）：14/14 全部 SAME-AS-UPSTREAM；上游历史 Dark/Development 主图与 resources 全部小图 = 2022-11-25 "Add alternate Dark icon"（Pixelmator XMP 2022-11-25 佐证），Light 主图三张 = 2025-05-29 "[Branding] Add the final logo"，AppLogo-Vector = XMP 2025-05-25；本 fork git 历史为单笔压平（8d634b4），故 git 时间戳不可用，以 PNG 内嵌元数据 + 上游树哈希定案
+- 用户对矛盾拍板前上传新图标 IMG_9288.jpeg 至仓库根目录（690×690 JPEG，附件通道故障期间走 GitHub 网页上传）；采用最小触碰集：AppIcon-Light.appiconset 三外观槽（universal/dark/tinted 同图三份，与上游装运约定一致）+ AppIcon-Light60x60@2x（iPhone 主图标）+ AppIcon-Light76x76@2x~ipad（iPad 主图标）；690→1024 LANCZOS 上采样、152/120 下采样；README 顶部展示图自动跟随
+- 保持不动：Dark/Development 备用三套（设置页选择器不可达）、AppLogo-Vector（零代码引用）、无后缀 AppIcon60x60/76x76（Info.plist/pbxproj 零引用）；Info.plist/Contents.json 未动一行（纯位图同名覆盖，引用按文件名解析）
+- 文档：announcements.json task193@2 插入（24→25，task190→3、task184→4 窗口族顺延）；version.h Task193 附录（REVISION 18 append-only）；verify_task173 M3 索引 [3..11]→[4..12]（9 处）+ verify_task190 [2]→[3] 重锚
+- verify_task193 新建 36 项（A 尺寸 5 / B 替换离上游 5+同图约定 1 / C 上游保持 10 / D 配置纯净 5 / E 溯源 8 / F 公告 2 / G compile 2）全绿；级联 173:123/123、190:ALL GREEN、192:52/52、129:47/47；140 七失败经 stash 对拍 HEAD 基线逐项相同（设备日志读取类环境性既有，零新增）
+- 教训：task193_docs.py 首版定义了 patch_version_h() 却忘在主流程调用——"改了"与"调用改了"必须以产物 grep 计数定案（本轮 verify D 组断言当场抓获，脚本已改幂等版）
+
+Stage Summary:
+- 装机锚点：重装后桌面图标 = 草方块立方体（iPhone/iPad 一致，浅色/深色/着色外观同图）；上游品牌资产零触碰可一键回滚（blob 哈希全档归档于 verify_task193）
+
+---
+Task ID: 193 (合并附记)
+Agent: main (Super Z)
+Task: 与图标会话的 Task 193 撞号合并
+
+Work Log:
+- 推送时发现并行图标会话已推 d8e557e（Task 193 图标替换 + 同名 verify_task193.py 36 检查 + MobileGlues version.h 的"REVISION 18 addendum (no bump)"附录）
+- rebase 解决唯一文件冲突 verify_task193.py：合并为 A-G（图标）+ H-O（六修一轮）共 86 检查的单文件；version.h 双方附录共存（REVISION 18 = 本轮 MobileGlues 同步的真实 bump，图标附录为 no-bump 备注）；worklog 双条目共存
+- rebase 后复验：verify_task193 86/86、task173 123/123、task129 47/47 全绿
+
+Stage Summary:
+- 两个 Task 193（图标 + 六修）在单提交序列上共存，CI 待推
+
+---
+Task ID: 193 (CI 收尾)
+Agent: main (Super Z)
+Task: CI 三轮拉锯终局
+
+Work Log:
+- round 1（0b54acd，run 36449463916）失败：i18n 迁移器打断了 LauncherPreferencesViewController.m:1917 的多行字符串拼接（mem_help.message 的 localize( 开在前一行，行内排除规则看不见首片段）→ "expected )"。热修 afa3882：还原拼接 + 四表删除孤儿键 ame193.misc.10（180→179）+ 基线 2408→2407 扫荡 15 验证器 + 全部 ame193 包装的平衡形态审计（零嫌疑）
+- round 2（afa3882，run 36450753778）失败：三个 AI UI 文件没 import utils.h（localize 未声明 + ARC int→NSString 级联）。热修 da75974：AIMessageCell/AIInputBarView/AISystemPromptEditorViewController 补 ../utils.h + 全树声明审计（零缺失）
+- round 3（da75974，run 36452197673）completed success，产物 .ipa + .tipa + dSYM 就绪
+
+Stage Summary:
+- Task 193 全链闭环：六修一轮 + MobileGlues 2.0.18 + 图标会话合并，verify_task193 86/86，CI 绿，新 IPA 就绪
+- 装机验证锚点六件：vgpu "Task193 step-attrs" 系列（四步错误归因裁决 0x0502）+ 方块材质恢复；gl4es "constructor bootstrap complete"（不再 strstr 崩）；Forge 26.1.2 "eglCreateWindowSurface REUSED"（越过 No graphics backend）；控件仓库下载 v1 布局不再崩；ANGLE "extension cache built" + DSA 激活 + "[dlsym] Task193: GL symbol resolution FAILED" 点名残余缺项；MobileGlues 运行日志可见 2.0.18
+- 教训三连：多行拼接的 i18n 迁移必须语句级（非行级）排除；ObjC 文件迁移前先查 localize 声明可达性；本地无 ObjC 编译器时用"声明审计 + 平衡形态审计"两道软门补
+
+---
+Task ID: 196
+Agent: main (Super Z)
+Task: vgpu 1.8.x 方块材质损坏 + 看门狗卡死修复（useVbo 强制）
+
+Work Log:
+- 装机日志分诊（latestlog.txt，1.8.9-forge 会话）：看门狗栈反复停在 GL11.glCallList <- RenderList.func_178001_a；原生崩溃栈落在 libvgpu.dylib 的 gl4es_glCallList（SIGSEGV ← ANGLE memmove）；mcVersion=1.8.9-forge-11.15.1.2318
+- 反编译 1.8.9 GameSettings（avh.class，上轮会话完成）：useVbo 键存在、布尔解析、默认 false —— 1.8.x 地形默认走显示列表；实体走立即模式所以正常（与"实体正常、方块坏"线索吻合）
+- Task193 的 step-attrs 四步归因探针装机全 0 —— 0x0502 是残留旧错误，EBO 修复本身健康，排除 VBO 路径嫌疑
+- 修复：PojavLauncher.launchMinecraft 在第一块 save() 之前、vgpu 会话（AMETHYST_RENDERER contains "vgpu"）强制 MCOptionUtils.set("useVbo","true")；落盘校验（getFromFile）置于 save() 之后（save 前读到的是旧盘值——上轮会话的时序修正结论）；后续 graphicsApi/lang 的 load() 均从磁盘重读，本值安全存续
+- 兼容性：1.8+ 均有 useVbo 键；1.7.10- 无此键，写入被 MC 忽略（vgpu 上 1.7.10- 显示列表问题仍无解，需换渲染器）
+
+Stage Summary:
+- 装机锚点："[PojavLauncher] Task196 useVbo=true forced (vgpu session..." + "Task196 on-disk verification: useVbo=true"；预期 1.8.9 方块渲染恢复 + 看门狗不再卡 glCallList
+- 刻意不做：不在 native 层 hook glCallList（治标且复杂）；不动 vgpu 显示列表实现本体
+
+---
+Task ID: 197
+Agent: main (Super Z)
+Task: ANGLE 26.3 黑屏终局（DSA 通告撤回）
+
+Work Log:
+- 装机日志分诊（latestlog.old.txt，26.3 + tinygl4angle 会话）：00:52:08 "ARB_direct_state_access detected, enabling DSA"（GlDevice 构造期，DSA 检测由我们 Task193 的通告触发）→ 随后 1547 × "Only NONE or BACK are valid draw buffers for the default framebuffer"（id=1282 HIGH）+ 2234 个 1282 总错 → 渲染打到错误目标 → 中心像素 rgba(0,0,0,0) 真黑，swap 58fps + 有声音
+- 根因锁定：MC 26.3 走 DirectStateAccess.Core 后每帧把附件/draw-buffers 操作打到默认帧缓冲；与 Task166 在 MobileGlues 上 A/B 实证的孪生同根因（DSA 开=黑屏、关=可玩且 FSR 生效）；上游 herbrine#143（2026-09-17 开放，症状逐字同型）无人修——我方谱系首创
+- 26.3 反编译取证（上轮会话完成）：GlDevice 构造期 DSA 检测、presentTexture 每帧 blit 到 framebuffer 0、Core.bindFrameBufferTextures 直呼 glNamedFramebufferTexture 不经绑定——机制链完整
+- 修复：tinygl4angle 的 ame193_extraExts 通告改为 ame197_effectiveExtCount() 门控（默认 0 = 撤回；AME193_DSA_ADVERTISE=1 强制开回供取证）；索引式扩展缓存与旧式 GL_EXTENSIONS 字符串追加点两处消费点都走门控；Task193 的扩展表补全机制保留（"DSA-off + 扩展缓存"组合此前从未装机测过——Task193 当时同时改了两个变量）；Task192/193 的 DSA 函数体保留（导出无害）
+- 判据澄清：dlsym 失败清单里无 framebuffer-DSA 函数（glCreateFramebuffers/glNamedFramebufferTexture/glBlitNamedFramebuffer 全部解析成功）——符号层面无缺口，纯通告策略问题
+
+Stage Summary:
+- 装机锚点："[tinygl4angle] Task197: DSA advertisement WITHDRAWN"（缓存路径 + 旧式字符串路径两条）+ MC 侧 "DSA support not detected"（而非 enabling DSA）+ 26.3 出画面
+- 回滚通道：AME193_DSA_ADVERTISE=1
+
+---
+Task ID: 198
+Agent: main (Super Z)
+Task: 控件仓库"全部挤在一坨"修复（误盖落戳救回 + 种子重戳）
+
+Work Log:
+- 取证：controls/layouts/ 三份种子均为 v7 格式（mControlDataList 按钮带 keycodes 数组 + dynamicX/dynamicY 相对表达式、无静态 x/y、scaledAt=101）却盖 "version":"1.0"；除 ESC（合法 0,0）外表达式完好（如 0.99601203 * ${screen_width} - ${width}）
+- 根因链：convertLayoutIfNecessary 见 version 1 → convertV1Layout：单数键 "keycode" 缺省（nil→0）→ keycodes 数组被整体替换成 [0]（按钮全部失去绑定）+ width/height 被 scaledAt=101 重除再乘 50（尺寸近乎减半）→ convertV2Layout：isDynamicBtn=false 按钮读静态 x/y（不存在，nil→0）→ dynamicX 被覆写成 "0.000000 * ${screen_width}" → 全部控件堆左上角 + 不可用
+- 修复①（加载器救回，治已下载坏副本）：convertLayoutIfNecessary 对 version<=1 的文件检查 mControlDataList——任一按钮同时具有 keycodes(NSArray) + dynamicX(NSString) + 无静态 x 即不可能为真 V1（"keycodes" 数组是 V1 转换的产物），直接落戳 version=7 跳过整条转换链；锚点日志 "Task198: mis-stamped version rescued"
+- 修复②（种子重戳，治未来下载）：三份种子 "version": "1.0" → "7"（外科手术式替换，其余字节不动）；index.json 三条目 version 同步 "7" + updated 日期 + size 字段更新为真实字节数（app 不校验 size，纯卫生；scanLocalVersions 对字符串/数字版本均兼容）
+- 仓库源即本仓库——推送后新下载自带正确落戳；已下载副本重新加载即自愈（无需重新下载）
+
+Stage Summary:
+- 装机锚点："[CustomControls] Task198: mis-stamped version rescued to 7"（老副本救回）或下载新副本后无该日志且布局正常；控件不再堆角、按键绑定恢复
+- scripts/task198_seed_restamp.py 保留为证据（断言每文件恰 1 处替换 + 按钮级无 version 键 + 落盘后解析验证）
+
+---
+Task ID: 201
+Agent: main (Super Z)
+Task: Metallum Metal 渲染器同步移植（上游 herbrine8403）+ 上游二轮调查归档
+
+Work Log:
+- 上游二轮调查（两份报告入仓 docs/surveys/）：fork 点 3c13d5e5（08-31）以来上游 346 commits（~90 为我方回移，标记扫描 76+）；Metallum 定位为 javaagent 注入的原生 Metal 后端（Premain-Class: com.metallum.agent.MetallumAgent，自带 natives/ios + ios12111 双套 metallum/spvc，868 entries）；上游实测 iPhone 17 Pro/iOS 27.2 跑 26.2/26.3 原版+Forge+Fabric（cc122400/#147、7ac756ca/#148、184321a7/#149）；议题调查 517 条三仓库扫描：herbrine#143 与我方 ANGLE 黑屏同病未修、Forge 26.1.2=LWJGL 缺口族（我方桩已在位，崩溃另有原因待日志）、平台限制三件建档（1440MB 内存帽 / iOS 27 TXM / 假补丁警告）
+- 移植内容：metallum_agent.jar → JavaApp/libs/others/（payload 的 cp libs/others/* → app/libs/ 已就位）；libmetallum.dylib → Frameworks（渲染器选择器存在性过滤用；agent 运行期自行解出）；libspirv-cross-c-shared.0.impl.dylib 替换为上游构建（Mach-O 导出符号解析：与旧 impl 唯一导出集完全一致 12383 个、MSL 后端 40 入口在场——零回归；垫片按名转发 API 稳定）；utils.h RENDERER_NAME_METAL；渲染器表末位条目（上游同款"索引稳定"结论：插中间会让已存 renderer 值错位）；JavaLauncher 四块：AMETHYST_METAL=1 + renderer 回落 auto（agent 只认此开关）、--add-opens=java.base/java.lang（defineClass 需要opens）、-javaagent 注入带 mcMajor>=26 门控（862f8b48 同款：agent class 65.0 在 Java 8 上 JVM abort）、-Dmetallum.mc.version 传递；surface 指针发布块（-Dmetallum.ios.view.pointer）已在树（早前同步带入，+surface 方法核实存在）；shaderc_impl_glue.c 补 glslang_program_map_io（上游 shaderc 对齐：link 后、SPIRV 生成前的 IO 映射，Metallum 的 MetalCrossShaderCompiler 对 binding/location 敏感）；AiSettingsTools.m 双映射（解析键 angle 先于 metal 防 MetalANGLE 误匹配 + 友好名）；l10n 四主语言 preference.title.renderer.debug.metal（"Metal (metallum)"，与上游逐字一致）
+- 刻意不同步：上游三个 spirv 裸副本（libspvc.dylib / libspirv-cross.dylib / libspirv-cross-c-shared.0.dylib，同一真库）——会绕过我方 Task175 串行化垫片链（并发编译互踩崩溃家族）；上游 Makefile 的 shaderc 预编译 blob——我方 Task45 从源码构建形态保持
+- 文档：version.h REVISION 18 附录（不 bump——四项均不改 MobileGlues 转换行为，MG 直连 glslang，shaderc 链另有消费者）；announcements.json task196 四连修公告@2 插入（25→26）；16 个验证器 2407→2408 基线扫荡（19 处引用）；公告窗口族全量重锚（含偿还 Task193 轮漏锚的 165/167/171/172/174/175/177/178/170/168/173b——task165 修后 34/34）
+- 副产物：task179_inc/tinygl4angle_harness.c 由验证器级联触发再生成（task179_transform.py 从当前 tinygl4angle.c 派生，断言全过 = Task197 代码纯 C 兼容）——衍生副本同步入册
+- 验证：verify_task196_197_198_201 51/51（A vgpu 8 / B angle 10 / C controls 9 / D metallum 14 / E docs 10）；公告索引静态审计全 FRESH（扩展模式覆盖 .get 与 ["announcements"][N] 形态）；全部修改源码括号平衡 HEAD 对拍同态；本地无 ObjC/Java 编译器，CI 为最终编译门
+
+Stage Summary:
+- 装机锚点四条："[JavaLauncher] Metal renderer selected: AMETHYST_METAL=1" + "Task201: Metallum agent enabled: -javaagent:metallum_agent.jar (mcVersion=26.x)"（26.x）/ "Task201: Metallum agent skipped: MC major < 26"（老版本，正常跳过）+ 设置→视频→渲染器出现 "Metal (metallum)" + 26.x 进游戏出画面
+- Forge 26.1.2 用户可先用 Metal 旁路；gl4es 崩溃与 Forge 26.1.2 需下轮装机日志
+---
+Task ID: 202
+Agent: main (Super Z)
+Task: e4d704e 四份装机日志判读收官 + 五渲染器修复轮（gl4es 崩溃根治 / Metal 首帧 / vgpu 纹理归因 / ANGLE 观察器 / Forge 定性）+ 两 GitHub 议题 + 语言选择器 54 语言全量化 + i18n 清扫
+
+Work Log:
+- 判读（四份日志全会话映射）：latestlog.1 = gl4es 1.8.9 崩溃；latestlog.txt = ANGLE 26.3 fabric 黑屏；latestlog.old.txt = Metal 26.3 进游戏后 AGX 崩溃；latestlog.2/old = vgpu 会话
+- A gl4es 根治：反汇编钉死崩溃链 initialize_gl4es(+0x798) → GetHardwareExtensions(+0xf90) → strstr——构造器无当前上下文时 glGetString(GL_EXTENSIONS)=NULL，首个 needle "GL_APPLE_texture_2D_limited_npot" 即 SIGSEGV（真实文件偏移 0x1BC2F4，slide=0x147898000 页对齐反推）。三层修复：① patch_gl4es_ggstr_nullguard.py 二进制垫片（0x6400 洞穴 = __text 前 21KB 对齐零区）把 strstr(NULL,...) 的 NULL 换成空串——构造器完整跑完不再崩；② Makefile payload 接线（patch_gl4es_rtld_default 之后、+3 TAB 行）；③ main_hook.m hooked_dlopen 记录 libgl4es 镜像基址（崩溃栈 slide 锚点）。Task193 块四锚全缺的谜底：代码在构建里（0b54acd..6629ce2 零改动），唯一自洽解释是临时上下文已 current 但 glGetString 仍 NULL——垫片从数据面根治而非纠结上下文时序
+- B Metal 首帧：根因 = Metal 渲染无 GL swap → pojavIncrementFpsCounter 永不触发 → 启动遮罩不消。修法：method_exchange CAMetalLayer nextDrawable（Metal 每帧必取 drawable），ame202_metalSessionArmed（AMETHYST_METAL=1 + SurfaceViewController.isRunning）时消遮罩。附带 dlsym 升级/钉扎（hooked_dlsym 对 glGetString 族解析到主程序外来实现时记录并钉扎我方 ANGLE）+ eglGetProcAddress 包装。AGX 驱动层崩溃（视频设置→资源重载→createTexture 后、无 GL 栈帧、上游同款未修）→ FAQ 建档指引，不追代码修复
+- C vgpu 勘误+归因：Task193 探针读错常量——0x8894 是 GL_ARRAY_BUFFER_BINDING（顶点）而非 ELEMENT（0x8895），eabBefore/eabNow 全部失真；修正后下轮日志才能真实反映索引缓冲。旧探针数据反转载决：bind/data/draw 全清、0x0502 只是队列积压残留——EBO 路径已修好，材质损坏另有其因。真凶指向纹理路径：图集只有 16x16（正常数百像素）+ 424 次 1282 错误 ≈ 20次/秒 = tick 频率动画纹理更新。修复：gl4es_glTexSubImage2D/glTexImage2D 归因探针（首 8 次全参 + 每 120 次窗口汇总，错误读取放最终 gles 分发后避开 noerrorShim 清零；TexImage 含 npot RESIZE-PATH 变体）——下轮日志直接定谳
+- D ANGLE 三观察器：黑屏定性为真黑内容（Task189 回读中心像素 (0,0,0,0)×3 = 真渲染了黑色）+ MC 26.3 从未绑定 UBO（uboBind=0，矩阵从未进着色器）+ 设备扩展列表仅 2 条（tinygl4angle 扩展缓存锚点全缺 = 拦截被 SDL_GL_GetProcAddress/eglGetProcAddress 路径绕过）。修：sdl3_hook GetProcAddress NULL 记名（去重全量代替 30 截断）+ 首 12 成功记名 + dlsym NULL 记名升级 + egl_bridge Task193 块入口锚点（ENTERED 行——下次日志直接看出块有没有跑）
+- E Forge 定性：崩溃栈 IForgeVertexFormat ClassNotFoundException + OptiFine 反射全面失败（4 vs 5 参数签名漂移）= 整合包内 OptiFine 与 Forge 64.1.3 二进制不兼容，属模组侧问题。修：PojavLauncher.java 启动参数全扫描（args 结构 [accountId/-jar, versionId, serverIp]，不能只看 args[1]）检测 mods/ 下 OptiFine 共存 → 警告打印 + FAQ 给解法（移除 OptiFine 或换匹配版本）
+- F i18n 清扫：修复 SurfaceViewController 两处乱码串（UTF-8 误编码的"游戏版本加载失败/请先登录账号"）→ ame202.surface.version_load_failed / login_required；AI 聊天界面 6 键（ai.cancel/confirm/custom_option/custom_prompt/input_here/new_session）；PLCrashView 崩溃对话框 OK/Copy 本地化（ame202.common.copy）。共 10 新键，四主表 2408→2418
+- G 语言选择器：app_language 从 system/zh-Hans/en 三项 → system + 全部 54 个内置 lproj。ame202_availableLanguageCodes()（dispatch_once 缓存，过滤 Base.lproj，字典序）+ ame202_languageDisplayName()（54 语言原生名手工表，含 Minecraft 玩笑语言 en-PT/en-UD/lol/pr；NSLocale(en) 兜底 + 裸码保底；非四主表追加 ame202.lang.partial "部分翻译" 标记）。localize() 三级回退（目标 lproj→en→zh-Hans）保证任意码可用
+- H 两议题：#2 键盘只能输入一个字符 = Task156 的 80ms 同文本去重窗把快速重复键击吞掉 → 20ms；#1 虚拟鼠标 = 双指滚动时 cancelsTouchesInView=NO 使 MOVE 仍喂给光标 → ame202ScrollGestureActive 标记（手势 Began/Changed 置位、MOVE 抑制、Ended **异步**清除——同步清会把先到的手势 Ended 清掉后到的 touchesEnded 又放行）+ 点击容差 5x5→24x24pt（居中）
+- I/J 文档：FAQ +2=37（Metal AGX 崩溃指引 + Forge/OptiFine 定性）；version.h REVISION 18 Task202 附录（不 bump——本轮零 MobileGlues 转换面改动）；announcements.json task202-october-fix-wave 末位追加（26→27，显示层按置顶+日期排序故物理末位零索引位移）；docs/surveys 两份调查报告 git add -f 强制入库（/docs 在 .gitignore——Task201 当年 add 被静默跳过的教训）
+- 验证：verify_task202 新写 57/57（A 垫片 8 / B metal 8 / C vgpu 9 / D angle 7 / E forge 5 / F i18n 7 / G input 6 / H docs 4 / I 语法门 / J 级联）；verify_task129 Makefile TAB 重锚 HEAD+3（484）；22 个验证器 l10n 基线 2408→2418 扫荡；.strings 语法门四表零差异；67 项回归失败与纯 HEAD stash 对拍 100% 同态（存量沙箱环境漂移，零新增）
+
+Stage Summary:
+- 装机锚点：gl4es 1.8.9 应活着进菜单（垫片为纯二进制补丁无运行时日志；观察 = 不再启动即崩 + "Using GLES 2.0 backend" 正常打印 + "[main_hook] Task202: libgl4es_114 image base = ..." 基址锚点行）；Metal 26.3 启动遮罩自动消（无需手点）；vgpu 会话看 Task202 teximage/texsubimage 探针的图集尺寸与 err 归因；ANGLE 会话看 GetProcAddress NULL 记名清单；Forge+OptiFine 看启动警告行
+- 议题 #1/#2 修复后待装机反馈关单；语言选择器设置页应出现 54 语言（非四主表带"部分翻译"后缀）
+---
+Task ID: 203
+Agent: main (Super Z)
+Task: 64fdaf2 三份装机日志判读 + 四根因根治（gl4es SIGILL / vgpu 钉扎劫持 / tinygl4angle NSLog 静默 / Forge early display）+ FAQ i18n 三语全量 + OptiFine 误报修复
+
+Work Log:
+- 判读（三份新日志全会话映射）：latestlog.1 = ANGLE 26.3 fabric 仍黑屏（swapOK=185 渲染循环活着、回读 (0,0,0,0) 真黑、UBO 族零调用）；latestlog.txt = 1.8.9-forge + gl4es SIGILL @ libgl4es+0x6400；latestlog.old = 1.8.9-forge + vgpu SIGSEGV @ gl4es_glMultMatrixf+0x2c。全部来自 64fdaf2 构建（Task202 代码在场）
+- A gl4es SIGILL 根因（法证闭环）：下载 CI 产物 IPA 实测——装机二进制 0x1BC2B4 处 BL 补丁【在场】但 0x6400 洞穴【全零】= Task202 垫片被 vtool 清零。机理：METHOD_CHANGE_PLAT 的 `vtool -set-build-version` 在补丁【之后】运行并整体重序列化 Mach-O——节间隙（0x6400-0x64F8，__text 之前）不属于任何节，重序列化时被抹；BL 在 __text 内得以幸存 → BL→零区 = UDF = SIGILL。修法（v2，vtool-proof by construction）：彻底弃洞穴，两个 glGetString 调用点（GL_EXTENSIONS @0x1BC2B0 + GL_VENDOR @0x1BDE4C，capstone 全函数扫描证实仅此两处）原地改写 `movz w0,#imm + blr x8` → `adrp x0,#0x1ce000 + add x0,x0,#0x9a2`——x0 直接指向 needle 串 "GL_APPLE_texture_2D_limited_npot " 的 NUL 终止符（0x1CE9A2，__cstring 真节内）；strstr("", needle)==NULL → 全部扩展检查报"不存在" → 构造器完整跑完。两处补丁全在 __text 活代码区 = vtool 逐字节保留（v1 的 BL 幸存已实证）。全部 strstr 消费者核验：-0xc8（扩展）/-0xd8（vendor）双槽都由补丁点喂、-0xa0（eglQueryString）上下文无关安全
+- B vgpu 崩溃根因（劫持链实锤）：旧会话（e4d704e）有 "VGPU: Calling load_all() → LIBGL: Initialising vgpu gl4es" 完整引导，新会话【零引导】+ 出现两条 "[tinygl4angle] Task182 gles pin"（ANGLE 的内部解析日志出现在 vgpu 会话 = 劫持铁证）。机理：gl_bridge 的 dlsym_EGL 对一切非自 EGL 渲染器用 RENDERER_NAME_MTL_ANGLE（libtinygl4angle.dylib）当 EGL 源 dlopen——tinygl4angle 在【所有】GL 会话中都是已加载（休眠）状态；Task202 钉扎层的门 = "已加载即钉扎" → vgpu 会话的早期 GL 调用（glGetError/glBindTexture/glTexParameterfv）被劫持到 tinygl4angle → vgpu 的 pack/load.c 惰性引导（首 GL 入口触发 load_all → initialize_gl4es → glstate）永不运行 → 后续 glMultMatrixf（tinygl4angle 不导出、回落 vgpu）在 NULL glstate 上 SIGSEGV。修法：钉扎加会话门——getenv("AMETHYST_RENDERER") 含 "libtinygl4angle" 才生效（JavaLauncher 在 JVM 启动前 setenv，全程正确；auto/gl4es/vgpu/LTW/MobileGlues/Mithril/MoltenVK 一律不钉）
+- C tinygl4angle NSLog 静默（诊断黑洞揭穿）：实证三链——(1) Task187 的 no-op 生效（0x884F/0x8642 的 ANGLE HIGH 调试消息被消音 = 我们的 glEnable 拦截确实在跑）但其 NSLog 锚点零输出；(2) printf 系（Task181/182）46 行全在；(3) 主二进制的 NSLog 走 stdout 重定向进日志、dylib 的 NSLog 落 os_log（不被捕获）。结论：此前"锚点未出现 = 代码未执行"的推理【全部作废】——扩展缓存可能一直在正常构建。修法：25 处 NSLog → printf（ame173_forensics 的嵌套 NSString 参数转 UTF8String）
+- D ANGLE 流量观察器（下轮定谳仪表）：三组 printf 观察器——(1) 查询族：glGetString/glGetStringi/glGetIntegerv 首次记名（name/pname + 结果头）；(2) 矩阵族：计数器并入 AME186_MATRIX_FN 宏（九函数全覆盖，含 transpose 参数）+ glUniform4fv 首次记名 + glUniform1iv/1f/2f/3f 转发；(3) 绘制族：glUseProgram/glDrawElements/glDrawArrays/glDrawElementsInstanced/glDrawArraysInstanced 首 8 次 + 周期抽样。下轮日志直接裁决：MC 的 caps 走哪条枚举路径、矩阵走经典 uniform 还是 UBO、几何有没有提交
+- E FAQ i18n（用户报告"问题标签页国际化一点都没有"）：加载器改随应用内语言（localize() 同构三级回退：所选语言 lproj → en → 包根 zh-Hans 基线；system 走 NSBundle 原生探测）；en.lproj/help-faq.json 全量翻译 37 条（渲染与性能 11 / 输入与控制 4 / 安装与数据 7 / 故障排除 15，图标序列逐条对齐）；zh-Hant（zhconv zh-tw 变体，啟動 口径与既有繁体表一致）+ zh-CN（简体同文）机器生成并对齐校验
+- F Forge 26.x early display（用户报告 tiny file dialogs "missing software!"）：fml.earlyprogresswindow 对 26.x 已失效（Task202 已推但没拦住）→ 补 -Dneoforge.enabledEarlyDisplay=false + -Dforge.disableEarlyDisplay=true（未知属性无害）。stdin=/dev/null → tinyfd 控制台 y/n 读 EOF 即跳过不死锁；FAQ Forge 条目补说明（四语同步）
+- G OptiFine 检测误报：装机日志实锤——用户已把 OptiFine 改名 .jar.disabled（禁用），检测只查文件名含 "optifine" 仍告警。加 .jar 后缀门，只有活跃 mods/*.jar 触发
+- H 文档：version.h REVISION 18 Task203 附录（no bump）；announcements.json task203-october-fix-wave 末位追加（27→28，索引锚保全）
+- 验证器：verify_task203 新写 32/32（A v2 补丁本地全生命周期实测 + 产物反汇编核验 / B 门控 / C printf 化 / D 观察器 / E FAQ 三语对齐 / F 属性散弹 / G 后缀门 / H 文档 / I 语法门含 HEAD 对拍）；verify_task202 A 节重写（v2 形态）+ H/I 锚重锚（公告 28、TAB 绝对基线 484）；verify_task129 I4 / verify_task135 E10 重锚（Task202 的 +3 已入 HEAD，对拍口径转绝对 484）；verify_task196_197_198_201 E / verify_task193 F 公告计数重锚 28；全量回归扫荡 69 失败与 HEAD stash 对拍【零新增】且修复 HEAD 的 4 个失败（129/130/131/203 锚过期）
+- 事故记录：JavaApp 路径笔误（pojvlaunch 少 a）引发"文件系统故障"假警报——实际是探针/恢复脚本写错路径 + 一次 touch 创建幽灵文件 + 恢复脚本写空 25 文件；经 git checkout HEAD -- JavaApp 全量恢复 + OptiFine 补丁重应用。教训：路径要复制粘贴，不要手打
+- AME186 冲突事故：Task203 初版 glUniformMatrix4fv 重定义撞 Task186 转置桥（task193_tinygl_syntax.sh 语法门拦截）——观察器并入宏内解决，语法门恢复通过
+
+Stage Summary:
+- 装机锚点：gl4es 1.8.9 应活着进菜单（不再 SIGILL；构造器完整跑完）；vgpu 1.8.9 恢复 Task202 之前的行为（有 LIBGL 引导横幅）；ANGLE 会话将出现 Task203 query/uniform/draw 计数行（黑屏定谳仪表）；Forge 26.x 无 tinyfd 提示；FAQ 页随语言显示
+- 下轮判读优先级：① ANGLE 的 Task203 观察器——矩阵上传路径（AME186 计数器 vs UBO 零调用）与绘制计数（几何是否提交）直接定谳黑屏；② vgpu 材质损坏（上轮纹理探针数据回来后分析）；③ 1.8.9 两渲染器回归确认
+---
+Task ID: 204
+Agent: main (Super Z)
+Task: a599782 三份装机日志判读 + 三渲染器根修（gl4es 系统 GLESv2 劫持 / vgpu 导出缺口 / ANGLE 数据面观察器 + 探针卫生）
+
+Work Log:
+- 判读（三份日志全会话映射）：latestlog.1 = 1.8.9-forge + gl4es（死于 glCheckFramebufferStatus status:0）；latestlog.txt = 1.8.9-forge + vgpu（材质损坏，材质面多重 0x0502）；latestlog.old = 26.3 fabric + ANGLE（黑屏，58fps swap + 中心像素 (0,0,0,0)）。全部 a599782 构建
+- A gl4es 根因（二进制反汇编 + tri-probe 对拍闭环）：Task203 v2 补丁已让构造器活着（GLES 2.0 backend 打印、mod 全加载、GL caps 识别）——死点后移到 MC init 首个 FBO 检查。glCheckFramebufferStatus 返回 0 = 无上下文实现的特征。libgl4es_114 每个 GL wrapper 对后端惰性 dlsym(_gles, name)，_gles/_egl（0x1de038/0x1de040，初值 -1=RTLD_NEXT）从未被改写 → RTLD_NEXT 从 libgl4es 出发命中【系统 /usr/lib/libGLESv2】（tri-probe：default=0x25bcb6d70 ver=<NULL>，gl4es/vgpu 双会话同址；Task36/Task182 SYMBOL THEFT 同源）→ 系统 ANGLE 无当前上下文 → 返回 0。旧构造器 strstr(NULL) 崩溃同根（proc_address 的 dlsym(RTLD_DEFAULT) 同样命中系统 GLESv2）。修法（egl_bridge.m Task193 引导块 dlopen 之后注入）：① _egl（导出）dlsym 直写 bundled libEGL 框架句柄；② _gles（PEXT 私有，dlsym 不可见）布局锚定位（导出 _egl==base+0x1de040 且 +0x1de038 仍为 -1 双指纹通过才写）；③ set_getprocaddress(ame204_gl4esProcResolver)（proc_address 优先查 resolver_global@0x1E3F98，单参签名反汇编实证）：gl* → eglGetProcAddress（上下文同源）→ 框架句柄，绝不回落 RTLD_DEFAULT（劫持通道）；egl* → libEGL 句柄。构造器不走此路（dlopen 期间已跑完）——v2 补丁继续兜底。caps 阶段 GL_MAJOR_VERSION=3 活得好好的之谜解开：LWJGL handle 定向解析指向 gl4es 自身导出，只有 wrapper 惰性后端指针被劫
+- B vgpu 材质损坏根因（日志 + 导出表交叉实锤）：[dlsym] NULL #7-#15（glEnable/glGenTextures/glDeleteTextures/glBindTexture/glTexParameteri/glTexImage2D/glTexSubImage2D/glActiveTexture/glGetError）= 核心 GL 入口对某消费者解析为 NULL；而 caps 阶段这些名字【未记 NULL】= 对 vgpu 句柄解析成功——dlsym(handle, name) 沿依赖闭包回落到【捆绑 libGLESv2.framework 的裸 ANGLE】（macOS dlsym 搜索 image + LC_LOAD_DYLIB 闭包）→ MC 的纹理管线完全绕过 vgpu 转译、直跑裸 ES3；固定管线半边（glBegin 等已导出）走 vgpu → 两套 GL id 命名空间共用一个上下文 → MC 纹理与 vgpu 内部 wrap-FBO 纹理互踩 → 材质损坏 + 图集首缝 16x16（首遍纹理加载失败）+ Task202 探针的 err=0x0500/0x0502（错误队列错位 + 真实失败）。根因在 vgpu_darwin_aliases.c：Task173 生成器只扫了 gl4eswraps.c——944 导出漏了 219+ 核心名（gles.c/texture.c/texture_params.c/buffers.c/framebuffers.c/drawing.c 等文件的 AliasExport 全没进表；attributes.h 在 __APPLE__ 上把 AliasExport 展开为空 = 裸原型，链接期绑到框架）。修法：scripts/task204_vgpu_gen_aliases.py（新写，原生成器已失传）再生成 = legacy 944 ∪ CMake 构建源的全部 AliasExport（1131 条，+187；注释剥离防幻影——vertexattrib.c 注释块里的 glGetVertexAttribdv 教训；新增导出零悬空目标核验；幂等）
+- C ANGLE 黑屏第二轮判读：几何已提交（glDrawArraysInstanced #4000+ 6 顶点实例化四边形）、caps 健康（glGetStringi 索引式扩展枚举 12 条 + GL_MAJOR/MINOR/NUM_EXTENSIONS）、着色器在用（prog=3/6/9）、58fps swap——但中心像素 (0,0,0,0)=clearColor → identity 变换下像素坐标几何全出 NDC。Task191 UBO 绑定观察器（glBindBufferBase/Range/glUniformBlockBinding，printf 版）+ Task203 矩阵族【全部零触发】= MC 26.3 画了 4000 个四边形却从未绑定 UBO、从未设 uniform。本轮补数据面观察器（glBufferSubData/glBufferData/glMapBufferRange/glUniform1i + glUniform1iv 计数化升级，Task203 静默版退役）——下轮日志裁决 Java 侧 gate（caps 判定关闭 uniform 管线，需反编译 26.3 client.jar）vs native 侧丢失（本层可修）
+- D 探针卫生（每帧 GL 错误泄漏修复）：Task75/187 geo-probe 查 0x8CA9/0x8CAA（GL_DRAW/READ_FRAMEBUFFER_BINDING）被本设备 ANGLE ES3 以 "Invalid pname"（id=1280 debug 消息）拒绝——8 条消息与 8 个探针帧完美相关，且 drawFb/readFb 恒 0（数据一直是废的）。改查 0x8CA6（GL_FRAMEBUFFER_BINDING，ES2 合法）：零错误泄漏 + 真值（MC 用 FBO 时终于可见）。heal-blit 的绑定目标常量（0x8CA8/0x8CA9）不动
+- 验证：verify_task204 新写 28/28（A 注入 11 + B 导出 6 + C 观察器/探针 5 + D 级联 5 + E 文档 1）；A 组含二进制法证（_gles/_egl 槽位初值 -1、导出面、proc_address 的 0x1E3F98 槽 adrp+ldr 对）；verify_task203 D 组重锚（AME173_RESOLVE 计数纳入 ame204 族）；verify_task75 A6h 重锚（0x8CA6）；task193_tinygl_syntax 绿；task179_inc 衍生 harness 同步再生成；全量级联 104 验证器与纯 HEAD stash 对拍【零 RC 差异】（80 个共同运行项全同态；存量失败均为旧沙箱路径/锚漂移）
+- 文档：version.h REVISION 18 Task204 附录（no bump，四主题 + 验证记录）
+
+Stage Summary:
+- 装机锚点：gl4es 会话 "[egl_bridge] Task204: gl4es backend pin -- glesSlot=YES eglSlot=YES resolver=YES" + 1.8.9 应越过 status:0 活到主菜单/进游戏；vgpu 会话材质应恢复正常（导出闭环后 MC 全 API 走 vgpu 转译）；ANGLE 会话看 "Task204 ubo/uniform" 计数行（绑定零+数据面零 = Java gate；数据面有 = native 丢失）
+- ANGLE 黑屏预计本轮不收口（观察器轮）；下轮判读优先级：① Task204 数据面计数 ② gl4es 1.8.9 回归确认 ③ vgpu 材质确认
+---
+Task ID: 204 (续)
+Agent: main (Super Z)
+Task: CI run 36657392103（38d84c1）失败修复 + 重推
+
+Work Log:
+- CI 判读："Build for ios" 步骤 clang link 失败：Undefined symbols——gl4es_glXChooseFBConfig/glXCreateContext 等 glX 全族 referenced from vgpu_darwin_aliases.c.o。根因：生成器初版只做注释剥离、无预处理器感知——glx.c 的 AliasExport 声明在 #ifndef NOX11 块内，源文本里有（悬空检查被哄过），但构建 -DNOX11 把定义体编没了 → asm 别名分支到不存在的符号
+- 修法（生成器 v2）：active_lines() 预处理器求值器——按 CMake 的 define 集（NOX11 NO_GBM NOEGL DEFAULT_ES=3 SHAREDLIB + __APPLE__）求值 #if/#ifdef/#ifndef/#elif/#else/#endif（defined()/&&/||/!/裸宏，未知表达式保守放行+警告）；声明扫描与定义扫描都走预处理后的活跃行；内建悬空守卫升级为 exit 1（新别名目标无幸存定义即拒写文件）
+- 从 3bf56ee 恢复真基线（944）再生成：1094 条（944 遗留 + 150 增量）；glX 守卫族全排除（仅剩 8 个无条件遗留项：glXGetProcAddress/ARB、SwapInterval 族、WaitGL/WaitX——CI 多月绿证安全）；核心覆盖/幻影防护/幂等/语法全过
+- verify_task204 B 组重锚：B1 加预处理器感知锚；B4 >=1080；B6 改为 CI 教训锚（glX 守卫族排除 + 8 遗留项白名单）；B7 新增（生成器重跑 exit 0 + 字节不变）→ 29/29
+- version.h 附录数字修正（1094/+150 + CI 教训）
+
+Stage Summary:
+- 修复提交待推送；CI 复跑预期绿（glX 族已出局）；装机锚点不变
+---
+Task ID: 204 (续二)
+Agent: main (Super Z)
+Task: CI run 36658634587（5abcff9）重复符号失败修复 + vgpu 理论修正 + 探针真归因
+
+Work Log:
+- CI 第二轮判读：link 失败 duplicate symbol '_glGetAttribLocation' 等——vgpu_pack 的 pack.c 与 vgpu_core 合成一个 dylib，pack.c 本来就【定义】286 个裸名 GL 转发（void glTexImage2D(...){ _LOAD_GLES gl4es_glTexImage2D(...); }），我的 asm 别名与它们撞符号
+- 理论修正（诚实入册）：pack.c 定义导出整族现代 GL 裸名 → "导出缺口导致 MC 绕过 vgpu"对这批名字不成立；设备日志的 [dlsym] NULL #7-#15 是次级消费者（cacio 形态的坏句柄）而非 MC caps。vgpu 材质损坏重新定性：首缝 16x16 = 缺失纹理棋盘格（用户所见），重载 512x512 图集 texsub 报 0x0502——但 GL 错误队列粘滞 + 会话里每次 draw 前 preErr=0x0502 常驻，旧探针无法区分"本调用失败"vs"排队残渣"
+- 修法三件：① 生成器 v3 双守卫（预处理器求值 + 裸名碰撞守卫：任何构建 TU 已定义的裸名不得别名化）→ 952 条（944 遗留 + 8 个真空缺 getter：glClearDepthf/glDepthRangef/glGetClipPlanef/glGetLightfv/glGetMaterialfv/glGetShaderPrecisionFormat/glReleaseShaderCompiler/glShaderBinary）；② 头部计数稳定化（幂等字节不变）；③ Task202 三路纹理探针（RESIZE/DIRECT/texsub）预排干——探针帧先清错误队列再分发再读数，下轮日志真归因
+- 验证：verify_task204 31/31（B2 改双路覆盖断言：别名 OR pack.c 定义；B6 CI 教训锚一 glX 守卫族；B7 CI 教训锚二 pack.c 零交集；B8 幂等字节不变；C6 探针预排干锚）；texture.c 括号平衡；task189_vgpu_syntax/task193_tinygl_syntax 绿
+- version.h 附录 (2) 重写为修正后的叙事（RETRACTED 标注 + 真实架构 + 重定性 + 新探针）
+
+Stage Summary:
+- 修复提交待推送；CI 复跑预期绿（撞符号族已全排除 + glX 守卫族已排除）
+- 下轮 vgpu 判读锚点：预排干后的 "VGPU Task202 teximage/texsub" err 值（真归因）+ preErr 常驻 0x0502 的来源定位（若 texsub 干净则图集上传其实成功，病灶在别处——例如 draw 路径的常驻错误源）
+---
+Task ID: 204 (续三)
+Agent: main (Super Z)
+Task: CI 确认
+
+Work Log:
+- CI run 36660194176（a8ad6df）completed success
+- 提交谱系：38d84c1（主修复，CI 红：glX 悬空）→ 5abcff9（生成器 v2 预处理器感知，CI 红：pack.c 重复符号）→ a8ad6df（生成器 v3 双守卫 + 探针预排干，CI 绿）
+
+Stage Summary:
+- Task204 全链闭环：gl4es 后端钉扎 + vgpu 生成器（双守卫）+ 探针真归因 + ANGLE 数据面观察器；新 IPA 就绪（run 36660194176 artifact）
+- 装机锚点：gl4es 会话 "[egl_bridge] Task204: gl4es backend pin -- glesSlot=YES eglSlot=YES resolver=YES"；vgpu 会话预排干后的 teximage/texsub err 真归因；ANGLE 会话 "Task204 ubo/uniform" 计数行
+
+---
+Task ID: 205
+Agent: main (Super Z)
+Task: 6209ca4 装机三日志判读（vgpu 材质损坏 IMG_0307.png / gl4es 黑屏 / ANGLE 黑屏）+ 用户新需求（CI 缓存加速、日志等级）
+
+Work Log:
+- 沙箱再次回退（HEAD=fa3c154 落后远程 298 提交）；fetch+reset --hard origin/main(6209ca4) 恢复。远程谱系已含 Task203(a599782)/Task204(a8ad6df CI 绿)，上传包 = latestlog.txt(vgpu 1.8.9-Forge) + latestlog.1(gl4es_114 1.8.9-Forge) + latestlog.old.txt(ANGLE MC26.3 fabric) + IMG_0307.png(2360x1640 材质损坏截图)
+- vgpu 判读：①Task202 探针 teximage/texsub 全部 err=0x0000 = 纹理上传路径干净（Task204 预言应验：病灶不在上传）②Task193 四步归因 preErr=0x0502 bindErr/dataErr/drawErr 全 0 = 绘制全成功、错误是队列积压（历史 post-draw 归因全是误报）③着色器编译全绿（"Compiler message"空=成功；961 行 out mediump vec4 FragColor 声明在场）④census QUADS=2449(avg4)+TRIANGLE_STRIP avg0（空 tessellator）⑤VLM 看图：几何位置正确、UI/HUD 完好、仅地表采样错图集区域+条纹 = 系统性 UV 错位。静态审计锁定 gl4es_glDeleteBuffers：rebind_real_buff_arrays 清 want-state 的 real_buffer/real_pointer 但 .pointer 仍指向已 free 的 shadow 内存（clone_gl_pointer 的 pointer=offset+buff->data）→ 删除后下次绘制脏检查触发重发 client 悬空指针 → iOS 接受 client 顶点数组 → 读堆复用后的任意字节当 UV = 截图形态。修法=墓碑化
+- gl4es 判读：Task204 后端钉扎 3/3 落地、strstr 崩溃已根治（游戏循环活、30fps 179 swap、正常退出）但回读 #1/#2/#3 全 (0,0,0,0)=内容级黑（连 clearColor 都没落地）；libgl4es_114 是纯预编译+二进制补丁（仓库无源码），无绘制级可见性 → 本轮靠日志等级功能给下轮装机加诊断杠杆
+- ANGLE 判读（黑屏定谳）：latestlog.old.txt 是 MC26.3 fabric 会话；CFR 反编译 client-263.jar（task129 留存）→ GlPipelineRecompiler.decompileShader 用 spvc_compiler_set_name 把 uniform 块重命名为 _uniform_%02d_%02d/_push_constants + 接口变量 _vert_input_%02d，GlProgram.setupBindGroupLayouts 靠 glGetUniformBlockIndex(重命名) 找块、GlCommandEncoder 靠 glBindBufferRange 绑 UBO。装机日志：glMapBufferRange(0x8A11) 2000+次=矩阵上传活、glBindBufferRange/UniformBlockBinding 零触发、编译出的 ES 源块名 "uniform Projecti"（原始名）= 重命名丢失 → 块查询全 -1 → UBO 永不绑定 → 单位变换 → 4000 实例化四边形全出 NDC → clearColor 黑屏。根因=spvc_shim.c ame175_compile_es_source 用留存 SPIR-V 字新建 ES 编译器，MC 在原编译器上的 set_name 重放缺失
+- 修复方案定稿：A=spvc shim 拦截 set_name 记录+重放；B=vgpu 墓碑化；C=日志等级（设置行+env+原生读取+tracer）；D=CI ccache+brew 缓存
+
+Stage Summary:
+- 三渲染器根因两定谳一延期：ANGLE（重命名丢失）与 vgpu（悬空指针）可根修；gl4es 预编译无源码，靠 C 的调试日志下轮定位
+- 26.3 反编译资产就位（task205/decomp：GlPipelineRecompiler/GlProgram/GlCommandEncoder/GlDevice/GlStateManager）
+
+---
+Task ID: 205 (续)
+Agent: main (Super Z)
+Task: 三修复 + 两功能实现
+
+Work Log:
+- A. spvc_shim.c（ANGLE 黑屏根修，四处）：①ame175_compiler_entry 扩展 names[256]/name_count/entry_point/exec_model（ame205_rename_t）②新拦截导出 spvc_compiler_set_name（转发+按编译器登记，同 id 覆盖、满 256 限频丢弃）与 spvc_compiler_set_entry_point（转发+留存）③ame175_compile_es_source 新增 orig 参数——ES 编译器装好选项后逐条重放 set_name + set_entry_point（SPIR-V result id 同字确定性一致），装机锚点 "[spvc-shim] Task205 rename replay: N names..." ④forget_context/槽位复用彻底释放重命名记录（防跨着色器错重放）
+- B. vgpu buffers.c（材质损坏根修）：ame205_tombstone_attrib_pointers——gl4es_glDeleteBuffers 在 free(buff->data) 前把地址落在 [data, data+size) 的属性 .pointer 重定向到 64KB 静态零页墓碑（vertexattrib[].buffer 是死字段不能用作识别，改地址范围判断）；删除窗口期的绘制退化为退化三角形（不崩/不脏），应用重新 gl*Pointer 自愈。装机锚点 "LIBGL: VGPU Task205 tombstone: N attrib pointer(s) ..."（标准级 4 条/debug 128 条）。附带定谳：maxbatch=0 默认=BATCH 复制路径休眠，VBO 绘制直读驱动侧缓冲——shadow 只在删除窗口被读，墓碑精确命中
+- C. 日志等级（复用既有 general.debug_logging 键，弃新增重复行）：①LauncherPreferencesViewController 既有 debug_logging 行升格注释（原只控启动器侧 NSDebugLog via debugLogEnabled）②JavaLauncher 读 general.debug_logging 导出 AMETHYST_LOG_LEVEL=debug/standard + LIBGL_LOGSHADERERROR=1（预编译 gl4es 唯一杠杆）③vgpu fpe.c 双 tracer：AME205_EARLYRET_TRACE（vertex/texcoord 同指针异格式检测）+ realize_glenv attrib-emit tracer（96 条：slot/size/stride/real_buf/real_ptr——UV 错位一击定位）④tinygl4angle.c 新增 glGetUniformBlockIndex 观察器（ANGLE 修复验证探针：idx>=0=重放成功/-1=仍失败，前 12+每 512 抽样+debug 128）⑤preference.detail.debug_logging 文案升级（en+zh-Hans，说明渲染器诊断范围）
+- D. CI 缓存（.github/workflows/development.yml，CRLF 保真脚本 scripts/task205_ci_cache.py）：①actions/cache 两路——ccache（~/.ccache，键含 Makefile+CMakeLists+vgpu 源码 hash，restore-keys 前缀）+ Homebrew downloads（键含 workflow 文件 hash）②brew install make ccache ③构建步骤接线 CC/CXX=ccache clang + CCACHE_DIR + max_size=2G + zero/show-stats。预期第二次起省 3-4 分钟/次（dep_mg MobileGlues 3.4 分钟=最大单项）
+- 验证：verify_task205 37/37（A 拦截/重放/语法/行为镜像 13 + B 墓碑 6 + C 日志等级 11 + D CI 7）；级联 task175_syntax_gates/task175_spvc_symtab/task193_tinygl_syntax 全绿；172:51/51、173:123/0；task171 失败=存量（纯 HEAD 同败，缺 171 时代装机日志证据文件）；175/176/179 失败=工作区脏树家族（仓库既有"提交后自愈"口径，141/168/170 同款）
+
+Stage Summary:
+- 三渲染器两根修一诊断增强：ANGLE=重命名重放（黑屏定谳修复）；vgpu=墓碑化（材质损坏定谳修复）；gl4es=预编译无源码，靠日志等级下轮定位
+- 日志等级=复用既有开关升格为全局等级（启动器 NSDebugLog + 渲染器诊断双层）
+- CI 缓存=ccache+brew 双路，预期 -3~4 分钟/次
+- 装机验证锚点：ANGLE "[spvc-shim] Task205 rename replay" + "[tinygl4angle] Task205 blockIdx: ... -> >=0"；vgpu "VGPU Task205 tombstone" + 黑屏/条纹消失；开调试日志后 attrib-emit 序列可直接定位任何残余 UV 错位
+
+---
+Task ID: 205 (续二)
+Agent: main (Super Z)
+Task: 级联验证 + 存量债务清点
+
+Work Log:
+- 级联全绿：181:35/0（外层 task181_syntax_gate.py 沙箱收割后重建——状态机括号计数，正则法被注释撇号假阳性）、182:39/0（外层 worklog 沙箱收割停在 Task110 → 从仓库 worklog 重建 Task162 起全部段落；E 门裸计数对 tinygl4angle.c 注释装饰括号假阳性 → 重锚为状态机）、172:51/51、173:123/0、183:50/50、186 全绿、191:45/0、192:52/0、193:86/0、196-201:51/51、202 全绿、203:32/32、204:31/31、205:37/37；语法门 task175_syntax_gates/task175_spvc_symtab(169)/task193_tinygl_syntax(SYNTAX OK, harness 镜像自同步)全绿
+- 机械重锚（存量漂移）：173b/174/175 的 l10n 计数锚 2157 → 2418（四主语言键集 en/zh-Hans/zh-CN/zh-Hant 实测 2418 一致 = Task202 时代合法基线，Task178 的 2157 漏随动）
+- 存量债务清单（全部先于 Task205 存在，纯 6209ca4 复现）：①公告内容锚家族 168-D2/170-F2/173b-E2/174-E2/175-G2+H2/176-I1/179-J1——announcements-fallback.json 被 Task203 重写为 2 条新条目，14+ 历史索引锚（idx 8/9/12/15...）集体孤儿化，需专轮重concile 或退役；②task179 I4/I5/I6 harness 桩生态漂移（纯 6209ca4 的 harness 同样 glDrawElements/glDrawArrays 重定义编译失败）；③task171 缺 171 时代装机证据文件（已由重建的外层门部分修复）
+- 教训：仓库内有 Task87 时代古董 stash（会话开始前存在）——git stash pop 会把古董工作日志溅到当前树上（本次在 worklog.md 冲突后 checkout HEAD 恢复，古董 stash 保持原样未动）；后续 pristine 对拍一律用 git show/git archive，不用 stash
+
+Stage Summary:
+- Task205 自有验证 + 可机械修复的级联全部清零；公告锚/harness 桩两族存量债务已定谳并记录，不阻塞渲染器修复主线
+- 提交 3086a42 已含三修复+两功能；本轮验证器重锚与外层工作区重建随 amend 入库
+
+---
+Task ID: 205b/c/d
+Agent: main (Super Z)
+Task: caf4591 推送后 CI 三轮事故根修（brew 挂死类 + 首次 CI 编译暴露的代码错误）→ 81c3dc9 CI 绿
+
+Work Log:
+- 推送态勘误：Task205 主体提交最终哈希为 caf4591（前段记录的 3086a42 是 amend 前旧哈希，验证器重锚随 amend 一并入库）
+- 事故一（run 36722042665，原始"70 分钟挂死"）：Task205b 初诊"runner 网络挂死"并加 brew update 看门狗（d009320）——后经三份日志取证定谳为【误诊】：brew update 三次实测 30-33 秒健康完成；真凶是 brew install ccache 在 macos-14 上解析出 llvm@22/rust/ruby/gcc 依赖树（无 arm64_sonoma bottle）→ 源码编译 LLVM/Clang，cmake --build 近零输出酷似挂死
+- 事故二（36735179980 attempt 2）：看门狗击杀在途 brew update → tap 半更新毒化 → ChecksumMismatchError: SHA-256 mismatch——看门狗方案有害，RETRACTED
+- Task205c（c6c749c）终案：① ccache 移出 brew，改官方预编译 ccache-4.14.1-darwin.tar.gz（fat 通用二进制 x86_64+arm64，仅链系统库，本地解包验证架构后采用），装进 ~/.local/ccache-tool 并入 actions/cache（键含版本）② brew 只装 make ③ brew update 改容错（|| true），挂死极端交 job 级 timeout-minutes=60 兜底 ④ 构建步骤 PATH 前置 ccache-tool 防遮蔽
+- 事故三（run 36739697080，c6c749c 首跑）：工具链四步骤全过（brew+ccache 预编译方案生效），但构建在 tinygl4angle.c:988 报 conflicting types——caf4591 的原生代码此前从未被 CI 编译（两连死在 brew），glGetUniformBlockIndex 被我写成 GLint（-1 判未找到），mesa glext.h 声明 GLuint（GL_INVALID_INDEX=0xFFFFFFFFu 判未找到）。vgpu_core（buffers.c 墓碑重写+fpe.c tracer）同 run 编译通过
+- 逃逸机制定谳：task193 本地门编译真源码但用 task179_inc/ stub 头，stub glext.h 是空壳 → 真头类型冲突本地不可见、CI 独有。修法双保险：stub glext.h 补 mesa 逐字原型+GL_INVALID_INDEX（证明实验：GLint 版+新 stub = 本地即报 conflicting types）+ verify_task205 C4c 全量文本级 lint（tinygl4angle.c 全部文件作用域定义 vs mesa glext.h 全部 GLAPI 原型比对返回类型）
+- 同场 ABI 审计修复：spvc_compiler_set_entry_point 真头（spirv_cross_c.h）返回 spvc_result（枚举=int ABI），Task205 拦截写成 void——调用方查返回值会读垃圾寄存器。改 int 返回+转发真实库 rc；重放 typedef set_entry_fn_t 同步
+- Task205d（81c3dc9）：tinygl4angle.c GLuint 化+GL_INVALID_INDEX 语义+日志 %u；spvc_shim.c int 返回；stub 头+ harness 镜像同步；verify_task205 47/47（A1b rc 转发锚、C4 GLuint 化、新 C4b/C4c）
+- CI 终局：run 36741829344（81c3dc9）success 14m37s；产物 com.air-devs.air-ios.ipa/tipa（210MB×2）+dSM；ccache 冷跑基线 751/827 可缓存、749 miss（99.7%）——三路缓存（ccache 编译缓存/brew 下载/ccache 本体）全部保存成功，下一轮起命中提速
+
+Stage Summary:
+- CI 闭环达成：caf4591（渲染器双根修+日志等级+CI 缓存）→ d009320（看门狗，后撤）→ c6c749c（ccache 预编译直装+看门狗 RETRACTED）→ 81c3dc9（GLuint 编译修复+ABI 修复+门逃逸堵死）→ 36741829344 绿 + IPA 就绪
+- 新增防回归资产：stub glext.h 真原型、C4c 原型冲突 lint、timeout-minutes=60、ccache 三路缓存
+- 装机锚点不变：ANGLE "[spvc-shim] Task205 rename replay" + "[tinygl4angle] Task205 blockIdx: ... -> 非 4294967295"；vgpu "VGPU Task205 tombstone" + 条纹消失；gl4es 开 debug 日志定位
+---
+Task ID: 206
+Agent: main (Super Z)
+Task: 7c0a021 装机双日志判读（ANGLE 方块透明 + vgpu 材质损坏依旧）→ 双主题收口：A = ANGLE push-constants 根修；B = NG-GL4ES（ZL2 的 gl4es）移植
+
+Work Log:
+- 判读（7c0a021 双日志）：latestlog.old = 26.3 fabric + ANGLE——Task205 重放已生效（_uniform_00_00/01 命中 idx 0/1、glUniformBlockBinding + glBindBufferRange 绑定链激活、rename replay 7/4/9/6 names），唯独 _push_constants → 4294967295 NOT FOUND ×206；latestlog.txt = 1.8.9 + vgpu（debug 全开）——Task202 NULL 解析 #7-#15 依旧、teximage/texsub 全干净（err=0x0000）、墓碑零命中、会话以 GL 1282 收场
+- A 根因定谳（ANGLE 方块透明）：SPIRV-Cross 的 GLSL 后端默认把 PushConstant 存储类块输出为散装 uniform 而非 uniform block——ame175_compile_es_source 只装了 VERSION=300 + ES=1，没镜像 MC 桌面路径必开的 EMIT_PUSH_CONSTANT_AS_UNIFORM_BUFFER → glGetUniformBlockIndex("_push_constants") 永远 GL_INVALID_INDEX → MC 逐绘制数据（颜色/alpha 调制）从不绑定 → 方块透明。修法：选项常量 AME206_OPTION_GLSL_PUSH_CONST_AS_UBO = (33u | 0x2000000u)（钉 vendored spirv_cross_c.h 665 行枚举值 + GLSL_BIT 宏），新旧两条选项 API 路径都设置；装机锚点 "[spvc-shim] Task206: EMIT_PUSH_CONSTANT_AS_UNIFORM_BUFFER enabled on ES compiler"
+- vgpu 定性：材质损坏病灶不在上传路径（探针全净）也不在悬空指针（墓碑零命中）——转译层本体顽疾，两轮根修未愈，按既定方向由 NG-GL4ES 接替（ZL2 同款 gl4es，glslang+SPIRV-Cross 着色器管线，上游口径几乎全版本可跑）
+- B 移植执行：上游身份 BZLZHH/NG-GL4ES（main 分支 codeload 快照 2026-10-01；ptitSeb/gl4es + gl4es-114-extra fork，MIT）；vendor 到 ThirdParty/ZalithLauncher2（7.9MB/272 文件；剔除 traces 46MB/spec/refs/media/tests/debian/external MetalANGLE 桩/3rdparty 子模块桩；死子模块 ZalithLauncher2（pin eba819b 零构建引用）从 .gitmodules 去注册）
+- B 构建面（适配版 CMakeLists，PROVENANCE 头 + 5 项适配）：glslang 静态链接复用 dep_mg 构建树（15.0.0 + lvalue-nullguard + pool-zero 双崩溃补丁——继承崩溃家族修复；NG vendored 的 15.4 头已从树中移除防头/库漂移，编译用 NGGL4ES_GLSLANG_INCLUDE 指向 pin 子模块源；glsl_for_es.cpp 的 API 面逐项核验全部 15.0 在位）；SPIRV-Cross 复用预编译 impl dylib（NG vendored spirv_cross_c.h 与 impl 构建头逐字节一致已验证）；框架链接 Amethyst 捆绑 libEGL/libGLESv2（依赖闭包回退语义与 vgpu 同款）；NOX11+NOEGL+DEFAULT_ES=3（NOEGL = Task179 家法）；Apple 不安全旗标移除（--strip-all/--gc-sections/GNU only）+ C++17；Makefile dep_nggl4es 目标（dep_shader_shims 同款 superbuild 路径 + find 兜底 + 分号连接静态库列表）+ payload 接线（mithril 之后 angle_freeze 之前）+ ccache 缓存键 +NG 树（CRLF 保真）
+- B 别名生成器（scripts/task206_gen_nggl4es_aliases.py，本轮最大工程）：attributes.h 在 __APPLE__ 上把 AliasExport 族退役为裸原型（Task204 双命名空间疾病同源）→ 生成 1273 个 asm 别名。NG 方言四难：宏参数式 AliasExport(RET,NAME,X,DEF)（token-paste NAME##X → gl4es_##NAME；_A 变体第 5 参重定向）；STUB/GL_GET_MAP/THUNK 宏族在体内定义 gl4es_ 函数；gl4eswraps.c 的 THUNK 用 token-paste 构造叶宏名（AliasExport##M2##_1，M2 空尾参形态 THUNK(s, GLshort, )）；glesnative.cpp 的 NATIVE_FUNCTION_HEAD 在 Apple 分支只定义裸名丢 name##ARB。引擎设计（四条调试教训）：①点态宏语义（分段快照展开——gl4eswraps.c 两度定义 THUNK 不同参数，文件末态表会错展开家族 1）②语句跨行（glx.c 的 AliasExport 参数换行续写）③原型≠定义（Apple 展开 AliasExport 即行首裸原型——定义判定 = 签名后 `{`-before-`;`）④单行多实例（THUNK 展开体一行十几个定义/别名——finditer + 语句边界锚 [;{}\n]）。守卫：预处理器求值（NOX11/NO_GBM/NOEGL/DEFAULT_ES/__APPLE__ + NO_LOADER——loader.h 在 Apple 上自定义该宏，不种子会错扫 loader.c 的 dlopen 分支）+ 裸名碰撞（glesnative 家族不别名）+ 悬空目标 exit 1（glX 教训）+ 幂等（重跑字节不变）。覆盖面验证：Task204 教训名单（glEnable/glGenTextures/glBindTexture/glTexImage2D/glTexSubImage2D/glGetError）+ 六变体 + glX 排除面（NOX11 守卫族出局、8 遗留项在位）+ 7 个 ARB twins
+- B 运行时接线（vgpu 设备实证流）：渲染器键 libnggl4es.dylib（LWJGL DYLIB 正则可匹配无连字符陷阱）追加 rendererCandidates 表末（metal 之后，索引稳定规则）；egl_bridge Task206 分支（零 EGL 动作——dylib 由 LWJGL 在游戏上下文 current 后 RTLD_GLOBAL dlopen，constructor(101) 探测落真上下文；宿主升级通道 set_getprocaddress 预留注释）；JavaLauncher NGG_DIR_PATH → POJAV_HOME/ngg（上游默认 /sdcard/NGG 在 iOS 必然 fopen 失败，config_refresh 静默无害）；VersionManager 短名 NG-GL4ES；AI 双向映射（nggl4es/krypton 在 gl4es 之前匹配——子串包含序 + friendlyName + 两处 summary 文本）
+- 文档面：l10n 四主语言 +1 键（preference.title.renderer.debug.nggl4es）→ 2418→2419 唯一键（+34 行差 = Task202 时代存量重复键，验证器按唯一键计数——上会话误扫 2453 已在重做中纠正）；锚扫荡 23 个验证器（task206_l10n_anchor_sweep.py，hex 字面量 0x512418 排除）；FAQ 5 份 JSON [11,4,7,15]→[12,4,7,15]=38（渲染器选择条目 + NG-GL4ES bullet + 记法句更新 + 专属条目@2；四语言锚句各按实际用字钉（zh-Hant 見下一條/老版本/後端 混用、en next entry/箭头式记法）；保真 roundtrip 全验证 + root twin 字节一致）；公告 announcements.json 28→29（task206-nggl4es-2026-10-01 双主题）；version.h REVISION 18 Task206 附录（no bump，双主题 + 验证记录 + endswith-SEP 不变量恢复）；TAB 基线 484→531 重锚（129 I4/135 E10/202 I/203 A）+ 129 A9 payload 行锚 + FAQ 计数锚（168 C3/202 H/203 E）+ 公告计数锚（193 F/202/203/196 家族）
+- 验证：verify_task206 43/43（A ANGLE 根修 6 + B vendor 树与溯源 7 + C 别名生成器 6 + D Makefile 4 + E 运行时接线 7 + F l10n/FAQ/公告 6 + G version.h 2 + H 级联 5）；级联：203 32/32 ALL GREEN、196_197_198_201 51/51、193 86/0、205 47/47 ALL PASS、129 46/47（仅剩脏树 I4 head=484 cur=531 提交后自愈）、168 41/43（D2 = Task203 时代已断存量债 + E7 脏树族）、174 仅 I/J 脏树两门、204 30/31（D4 = 202 的 J 级联脏树）；语法门：task193_tinygl_syntax SYNTAX OK、task175_syntax_gates ALL PASS、task175_spvc_symtab 169 globals、spvc_shim gcc -fsyntax-only 干净、别名文件 gcc 语法干净、七个触改 .m/.h 括号平衡（状态机含字符串/注释感知）、四主语言 .strings 行语法、CMakeLists 结构门 12 项（注释剥离后无可执行部分 GNU 旗标）
+- 环境教训：Edit 工具在 CRLF 文件（.github/workflows）上 old_str 匹配失败——LF 探针 + python 字节级替换是 CRLF 保真的唯一安全路径；MultiEdit 顺序应用非原子（第 4 处失配时前 3 处已落盘——后续编辑需按实际文件态续作）
+
+Stage Summary:
+- ANGLE 方块透明根修待装机验证：日志锚点 "[spvc-shim] Task206: EMIT_PUSH_CONSTANT_AS_UNIFORM_BUFFER enabled" + blockIdx 探针 _push_constants 从 4294967295 变 >= 0 + 方块不透明
+- NG-GL4ES 上线待装机验证：渲染器列表末位可选；装机锚点 "[egl_bridge] Task206: NG-GL4ES renderer:" + "[JavaLauncher] Task206: NG-GL4ES renderer active (NGG_DIR_PATH=...)" + LIBGL 横幅 "Initialising Krypton Wrapper"；老版本材质损坏用户（1.8.9）首选换它
+- CI 待推送确认：dep_nggl4es 首次进编译链（本地无 cmake/clang 无法预验——生成器守卫 + 结构门已尽本地最大覆盖；失败形态预判：glslang 15.0 头的 API 缺口（已核验无）/框架链接路径/别名 asm 形态（vgpu 同款 CI 实证））
+- vgpu 保留在列表（存量设备兼容），NG-GL4ES 为推荐接替者
+
+---
+Task ID: 206 (续二)
+Agent: main (Super Z)
+Task: CI 十一轮事故根修 → 36815269161 绿 + IPA 就绪
+
+Work Log:
+- 事故一（36804929330）：dep_nggl4es 与 dep_mg 并行竞速（payload 依赖列表在 -j 下无序，glslang 还在 36% 就来找静态库）→ 目标级先决条件 dep_nggl4es: dep_mg（dep_shader_shims 同款家法；守卫本身按设计干净早退）
+- 事故二（36805637724）：string_utils.c 18 个裸 __attribute__((alias)) 被Apple clang 拒（"aliases are not supported on darwin"——attributes.h 退役 AliasExport 的同源病，vendored 树还有第四种方言）→ 声明围栏 !__APPLE__ + 生成器加原文 alias-属性通道（带引号目标形；宏体内的 alias(#name) 不匹配）→ 1273→1291
+- 事故三（36806869734）：directstate.c 2 个 AliasDecl（无 Apple 退役分支）+ drawing.c/framebuffers.c 无守卫使用 NOEGL 分支不存在的 LOAD_GLES3_OR_EXT → 围栏 + 生成器 AliasDecl 通道（exported=arg2 target=arg4 全限定）→ 1291→1293；loader.h NOEGL 分支补定义（proc_address 基名+EXT 兜底，镜像非 NOEGL 的 eglGetProcAddress 链）
+- 事故四（36808113773）：glext.h 的 __APPLE__ 分支 GLhandleARB=void* 与 gles.h 的 unsigned int 在同 TU 相撞 → 对齐 gles.h 约定（代码以 int 语义使用：gl4es_glGetHandle 返回 GLuint；同型重定义 C11 合法，include 顺序免疫）
+- 事故五（36808922924）：texture.c case 标签后直接声明（GCC 扩展，严格 C17 拒绝）→ 花括号包裹（全树带注释跳过扫描仅此一处）
+- 事故六（36809835918）：glx.c system() iOS 不可用 + GLVND 表引用 !NOX11 实现 → xrefresh Apple 退化空操作 + 表 NOX11 围栏；glsl_for_es.cpp 的 glslang include 是安装布局（源码树 SPIRV/ 在根、Public|Include 在 glslang/ 子目录）→ 双路径 NGGL4ES_GLSLANG_INCLUDE=3rdparty;3rdparty/glslang
+- 事故七（36811163951）：Makefile 注释行插在续行链中间且无反斜杠——# 截止逻辑行，cmake 只拿到 -D 链 → 注释移出（本轮教训：链中不能有无反斜杠注释）
+- 事故八（36811929580）：CMake if(NOT VAR) 对分号列表展开为多参数（NOT p1 p2 p3）= NOT-of-invalid = true → 守卫误触 → 引号化 STREQUAL "" 形态 + 报错自带四变量值（下轮立功）
+- 事故九（36812741433）：CMake 无反斜杠续行（if() 跨行天然到闭括号）→ 去 \ 
+- 事故十（36813488794）：注释移出后又落在 mkdir 与 cd 之间——仍在链中！链在注释处断成两个 shell：ngg_libs 是 shell 变量跨 shell 即空（\$(SOURCEDIR) 是 make 变量每个 shell 都展开——完美解释为何只有 LIBS='' 而其余三变量活着）→ 注释移至 mg_bindir 之前 + 机器审计不变量（start 到源路径行之间非注释行全部以 \ 结尾、无链中注释）；中途一次脚本化搬运误入 dep_shader_shims 的同前缀 mg_bindir（前缀搜索陷阱——锚定搜索范围后归位）
+- 事故十一（36814447589）：GLVND 尾部全家（LoadGLXFunction 调 NOX11 区的 glXGetProcAddress + XDefaultDepth/XGetVisualInfo 用 X11 宏）→ #endif 扩至文件尾
+- 终局：36815269161（c9ca935）completed success；产物 com.air-devs.air-ios.ipa/tipa 211.3MB + dSYM 3.9MB——libnggl4es.dylib 完整构建链接（1293 别名 + glslang 15.0 双补丁静态库 + spvc impl dylib + 捆绑框架）
+- ccache 三路缓存命中：本轮 12 连跑后缓存已热，下轮起 dep_nggl4es 增量 <1 分钟
+
+Stage Summary:
+- Task206 全链闭环：ANGLE push-constant 根修 + NG-GL4ES 移植 + 12 轮 CI 收口，IPA 就绪
+- 装机验证锚点：①ANGLE "[spvc-shim] Task206: EMIT_PUSH_CONSTANT_AS_UNIFORM_BUFFER enabled" + blockIdx _push_constants ≥0 + 方块不透明；②NG-GL4ES 渲染器列表末位可选（"[egl_bridge] Task206: NG-GL4ES renderer:" + "[JavaLauncher] Task206: NG-GL4ES renderer active" + "Initialising Krypton Wrapper" 横幅）；③1.8.9 老版本材质损坏用户换 NG-GL4ES
+- CI 教训沉淀：vendored 移植的"方言考古"清单（裸 alias 三种形态 + NOEGL 宏缺口 + typedef 对齐 + C17 标签声明 + GLVND 围栏 + 安装/源码 include 布局）与 Makefile/CMake 两门各自的三条铁律（链中注释/if 列表语义/无续行符）

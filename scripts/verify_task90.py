@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""
+Task 90 验证器：右侧面板按钮恢复原样 + 主界面卡片顶部色条移除 + 内存权限误报修复
+
+背景（用户实测反馈，截图 IMG_9106）：
+  1. 蓝框（右侧面板按钮）：Task89 的"全灰新拟态按钮"选择有误，要求恢复
+     Task88 时点（7ab2b41）的原样，此后不再改动该面板按钮样式；
+  2. 红框（主界面卡片顶部 3pt 渐变色条）：全部移除（HomeTileBaseCell.accentBar）；
+  3. 内存权限标识误报：用户未开内存权限，"扩展内存限制/扩展虚拟内存"却显示
+     已开启。根因：仓库自带 entitlements.*.xml 模板把两项 kernel entitlement
+     预写为 true，侧载工具合并模板后签名里确实携带，SecTask 如实报告"有"，
+     但描述文件未授权时内核并不真正兑现。
+
+修复实现（四处）：
+  1. utils.m——新增 CopyEmbeddedProfileEntitlements()（按字节定位
+     embedded.mobileprovision 的 "<?xml ... </plist>" 载荷并解析 Entitlements）
+     与 getEffectiveEntitlementValue()（签名 + 描述文件授权双确认；无描述文件
+     的 TrollStore 场景回退为签名判定）；
+  2. LauncherPreferences.h——声明 getEffectiveEntitlementValue；
+  3. LauncherRightPanelViewController.m——整体回退到 7ab2b41（按钮原样：
+     下载/管理/执行按钮深灰底、启动按钮 accentColor 底、三枚胶囊恢复同色
+     15% 透明度底），仅 updateMemoryEntitlementStatus 改用生效判定；
+  4. main.m——latestlog 增加"描述文件授权口径"的生效状态输出，便于区分
+     "签名携带"与"实际生效"。
+  另：LauncherNewsViewController.m——HomeTileBaseCell 移除 accentBar 渐变
+  装饰条（保留 setAccentColor: 空操作以兼容 6 处调用点；磁贴图标语义色不受
+  影响）；Task137 起占位底色为原生 tertiarySystemFillColor（语义色自适应）。
+"""
+import os
+import re
+import subprocess
+import sys
+
+REPO = os.environ.get("TASK90_REPO", "/home/z/my-project/Amethyst-iOS-MyRemastered")
+PASS, FAIL = 0, 0
+
+MEM_KEY = "com.apple.developer.kernel.increased-memory-limit"
+VM_KEY = "com.apple.developer.kernel.extended-virtual-addressing"
+
+
+def check(name, cond, detail=""):
+    global PASS, FAIL
+    if cond:
+        PASS += 1
+        print(f"  PASS  {name}")
+    else:
+        FAIL += 1
+        print(f"  FAIL  {name}  {detail}")
+
+
+def read(path):
+    with open(os.path.join(REPO, path), encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def strip_objc_strings_comments(src):
+    """字符串感知的 ObjC 源码剥离：去掉 @"..." 字面量与 // /* */ 注释，保留结构。"""
+    out, i, n = [], 0, len(src)
+    while i < n:
+        c = src[i]
+        if c == '"':
+            i += 1
+            while i < n and src[i] != '"':
+                i += 2 if src[i] == '\\' else 1
+            i += 1
+            out.append('""')
+        elif src.startswith("//", i):
+            while i < n and src[i] != '\n':
+                i += 1
+        elif src.startswith("/*", i):
+            j = src.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def bracket_balance(stripped):
+    counts = {"(": 0, "[": 0, "{": 0}
+    pairs = {")": "(", "]": "[", "}": "{"}
+    for ch in stripped:
+        if ch in counts:
+            counts[ch] += 1
+        elif ch in pairs:
+            counts[pairs[ch]] -= 1
+            if counts[pairs[ch]] < 0:
+                return False
+    return all(v == 0 for v in counts.values())
+
+
+def git_file_at(commit, path):
+    r = subprocess.run(["git", "-C", REPO, "show", f"{commit}:{path}"],
+                       capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def git_diff_stat(commit, path):
+    r = subprocess.run(["git", "-C", REPO, "diff", "--unified=0", commit, "--", path],
+                       capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else ""
+
+
+print("=" * 72)
+print("C1. utils.m：getEffectiveEntitlementValue（签名 + 描述文件授权双确认）")
+print("=" * 72)
+utils = read("Natives/utils.m")
+utils_code = strip_objc_strings_comments(utils)
+check("getEntitlementValue（签名口径）保留且未删除", "BOOL getEntitlementValue(NSString *key) {" in utils_code)
+check("Task93：getEffectiveEntitlementValue 双确认实现已整体移除",
+      "BOOL getEffectiveEntitlementValue(NSString *key) {" not in utils_code)
+check("Task93：CopyEmbeddedProfileEntitlements 已整体移除",
+      "CopyEmbeddedProfileEntitlements(void)" not in utils_code)
+check("Task93：移除处留有标记注释（双确认方案废弃原因）",
+      "Task93" in utils and "完全同源" in utils)
+check("SecTask 私有 API 声明仍在（SecTaskCopyValueForEntitlement）",
+      "SecTaskCopyValueForEntitlement" in utils)
+check("utils.m 花括号配平", bracket_balance(utils_code))
+
+print()
+print("=" * 72)
+print("C2. LauncherPreferences.h：生效判定声明已随 Task93 移除")
+print("=" * 72)
+lph = read("Natives/LauncherPreferences.h")
+check("Task93：getEffectiveEntitlementValue 声明已移除", "BOOL getEffectiveEntitlementValue(NSString *key);" not in lph)
+check("原 getEntitlementValue 声明保留", "BOOL getEntitlementValue(NSString *key);" in lph)
+
+print()
+print("=" * 72)
+print("C3. LauncherRightPanelViewController.m：Task96 MeloNX 信息卡改版（原 7ab2b41 回退断言已随 Task96 退役）")
+print("=" * 72)
+rp = read("Natives/LauncherRightPanelViewController.m")
+rp_code = strip_objc_strings_comments(rp)
+
+# —— Task96 同步：右面板改版为 MeloNX 信息卡（用户指定），断言随改版更新 ——
+for tag, needle in [
+    ("下载中心按钮原生卡片底（Task137 重锚：黑底深字直修，语义色自适应）", "self.downloadCenterButton.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];"),
+    ("启动按钮 accentColor 底", "self.launchButton.backgroundColor = accentColor();"),
+    ("启动按钮圆角+阴影注释（masksToBounds）", "self.launchButton.layer.masksToBounds = YES;"),
+    ("管理版本按钮 accentColor 底（Task96 与登录并启动同款）", "self.manageVersionBtn.backgroundColor = accentColor();"),
+    ("执行 Jar 按钮 accentColor 底（Task96 与登录并启动同款）", "self.executeJarBtn.backgroundColor = accentColor();"),
+    ("管理版本按钮白字标题", "[self.manageVersionBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];"),
+    ("执行 Jar 按钮白字标题", "[self.executeJarBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];"),
+    ("applyCustomAppearance 刷新三枚按钮 accent", "self.manageVersionBtn.backgroundColor = accentColor();"),
+]:
+    check(tag, needle in rp_code)
+check("启动按钮阴影保留",
+      "self.launchButton.layer.shadowColor = [UIColor blackColor].CGColor;" in rp_code)
+check("Task96：七张 MeloNX 信息卡经工厂创建",
+      rp_code.count("makeInfoCardWithIcon:") == 8)
+check("Task96：卡片 15% 透明同色底", "colorWithAlphaComponent:0.15" in rp)
+check("Task96：卡片滚动区存在", "UIScrollView *infoScrollView" in rp and "UIStackView *infoStackView" in rp)
+check("文件不含 NeomorphKit 导入（原样）", "NeomorphKit" not in rp)
+check("文件不含任何 nm_ 新拟态调用（原样）", not re.search(r"\bnm_", rp))
+check("未引入 NMTheme（原样）", "NMTheme" not in rp)
+check("Task93：两项均改回签名口径 getEntitlementValue（与启动日志同源）",
+      rp.count('getEntitlementValue(@"com.apple.developer.kernel.') == 2)
+check("生效判定调用已无残留",
+      "getEffectiveEntitlementValue(@" not in rp_code)
+check("生效判定调用使用正确的两个 key", MEM_KEY in rp and VM_KEY in rp)
+check("JIT 状态刷新仍用签名口径 getEntitlementValue（不受影响）",
+      "BOOL enabled = isJITEnabled(NO);" in rp_code)
+check("花括号配平", bracket_balance(rp_code))
+
+print()
+print("=" * 72)
+print("C4. LauncherNewsViewController.m：主界面卡片顶部色条移除")
+print("=" * 72)
+news = read("Natives/LauncherNewsViewController.m")
+news_code = strip_objc_strings_comments(news)
+check("accentBar 属性已删除", "CAGradientLayer *accentBar" not in news_code)
+check("不再创建渐变装饰条", "accentBar = [CAGradientLayer layer]" not in news_code)
+check("不再 addSublayer 挂载色条", "addSublayer:self.accentBar" not in news_code)
+check("layoutSubviews 不再更新色条 frame",
+      "self.accentBar.frame" not in news_code)
+check("layoutSubviews 阴影路径退役（Task137 重锚：原生磁贴卡片无自绘阴影）",
+      "self.layer.shadowPath" not in news_code)
+check("setAccentColor: 声明保留（兼容 6 处调用点）",
+      "- (void)setAccentColor:(UIColor *)color;" in news_code)
+check("setAccentColor: 实现保留（空操作）",
+      "- (void)setAccentColor:(UIColor *)color {" in news_code)
+call_sites = len(re.findall(r"\[cell setAccentColor:\[config accentColor\]\]", news_code))
+check("数据源 6 处调用点原样保留", call_sites == 6, f"实际 {call_sites} 处")
+check("磁贴图标配色不受影响（iconView.tintColor = config accentColor）",
+      "cell.iconView.tintColor = [config accentColor];" in news_code)
+check("Task137 重锚：头像占位底色为原生 tertiarySystemFillColor",
+      "self.avatarImageView.backgroundColor = [UIColor tertiarySystemFillColor];" in news_code)
+check("Task137 重锚：新闻缩略图占位底色为原生 tertiarySystemFillColor",
+      "self.thumbnailView.backgroundColor = [UIColor tertiarySystemFillColor];" in news_code)
+check("卡片 contentView 圆角 16 保留（原生磁贴卡片；Task137 重锚）",
+      "self.contentView.layer.cornerRadius = 16;" in news_code)
+check("BackgroundManager 枢纽调用保留（applyEffectToCollectionViewCell）",
+      "applyEffectToCollectionViewCell:self]" in news_code)
+check("花括号配平", bracket_balance(news_code))
+
+print()
+print("=" * 72)
+print("C5. main.m：生效口径日志块已随 Task93 移除，仅保留签名口径日志")
+print("=" * 72)
+mainm = read("Natives/main.m")
+check("Task93：生效口径日志标题已移除", "Entitlements effectiveness (profile-granted):" not in mainm)
+check("Task93：main.m 无 getEffectiveEntitlementValue 残留",
+      "getEffectiveEntitlementValue" not in mainm)
+check("签名口径可用性日志保留（printEntitlementAvailability）",
+      mainm.count("printEntitlementAvailability(@") == 5)
+check("main.m 已导入 LauncherPreferences.h（声明可见）", '#import "LauncherPreferences.h"' in mainm)
+
+print()
+print("=" * 72)
+print("C6. 根因留档：entitlements 模板（Task91 同步——sideload 模板预写已移除）")
+print("=" * 72)
+# Task91：sideload 工件的签名即用户最终签名，预写的 kernel entitlement 使
+# 内存标识对所有人显示"已开启"，已从 sideload 模板移除；
+# TrollStore 工件（真实生效）与开发者签名模板（描述文件背书）保留。
+ts_tpl = read("entitlements.trollstore.xml")
+cs_tpl = read("entitlements.codesign.xml")
+check("entitlements.trollstore.xml 含 increased-memory-limit（真实生效场景）", MEM_KEY in ts_tpl)
+check("entitlements.trollstore.xml 含 extended-virtual-addressing", VM_KEY in ts_tpl)
+check("entitlements.codesign.xml 含 increased-memory-limit（描述文件背书场景）", MEM_KEY in cs_tpl)
+check("entitlements.codesign.xml 含 extended-virtual-addressing", VM_KEY in cs_tpl)
+
+print()
+print("=" * 72)
+print("C7. 生效判定决策表——已随 Task93 移除双确认方案而作废")
+print("=" * 72)
+check("Task93：决策表镜像的 getEffectiveEntitlementValue 已不存在于 utils.m",
+      "BOOL getEffectiveEntitlementValue(NSString *key) {" not in utils_code)
+
+print()
+print("=" * 72)
+print(f"Task 90 验证结果：PASS {PASS} / FAIL {FAIL}")
+print("=" * 72)
+sys.exit(1 if FAIL else 0)
