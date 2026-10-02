@@ -14,6 +14,12 @@
 
 @implementation ControlButton
 
+// Keep on-screen controls out of keyboard focus; a focused button would
+// swallow Space instead of letting it reach Minecraft.
+- (BOOL)canBecomeFocused {
+    return NO;
+}
+
 + (void)load {
     Class NSPredicateUtilities = objc_getMetaClass("_NSPredicateUtilities");
 

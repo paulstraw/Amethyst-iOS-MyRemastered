@@ -22,6 +22,19 @@ static const CGFloat kMenuButtonSize = 44.0;
 // 拖拽阈值：超过此距离算拖动，否则算点击（参照 FCL MenuView 的 10px 阈值）
 static const CGFloat kDragThreshold = 10.0;
 
+// The floating menu button must never take keyboard focus or keyboard presses:
+// on visionOS a focused button swallows Space (opening the menu) instead of the
+// key reaching Minecraft. Presses are passed on up the responder chain.
+@interface GameMenuNonFocusableButton : UIButton
+@end
+
+@implementation GameMenuNonFocusableButton
+- (BOOL)canBecomeFocused { return NO; }
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event { [self.nextResponder pressesBegan:presses withEvent:event]; }
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event { [self.nextResponder pressesEnded:presses withEvent:event]; }
+- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event { [self.nextResponder pressesCancelled:presses withEvent:event]; }
+@end
+
 @interface GameMenuOverlayView ()
 
 // 设置按钮（圆形）
@@ -66,7 +79,7 @@ static const CGFloat kDragThreshold = 10.0;
 }
 
 - (void)setupMenuButton {
-    self.menuButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.menuButton = [GameMenuNonFocusableButton buttonWithType:UIButtonTypeSystem];
     self.menuButton.frame = CGRectMake(0, 0, kMenuButtonSize, kMenuButtonSize);
     self.menuButton.layer.cornerRadius = kMenuButtonSize / 2;
     // 半透明深色背景，确保在游戏画面上可见

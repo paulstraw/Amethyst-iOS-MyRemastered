@@ -2013,6 +2013,20 @@ static BOOL forwardingPressesToSDL = NO;
     [super pressesEnded:presses withEvent:event];
 }
 
+// Re-query the pointer style whenever the grab state has changed since the
+// last time it was applied. Called from hover, raw mouse movement, and
+// pointer-lock updates so the hidden state follows grabbing promptly.
+- (void)syncPointerHidden {
+    if (self.pointerHidden == isGrabbing) return;
+    self.pointerHidden = isGrabbing;
+    [self.pointerHideInteraction invalidate];
+}
+
+- (void)setNeedsUpdateOfPrefersPointerLocked {
+    [super setNeedsUpdateOfPrefersPointerLocked];
+    [self syncPointerHidden];
+}
+
 - (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction styleForRegion:(UIPointerRegion *)region {
     return isGrabbing ? [UIPointerStyle hiddenPointerStyle] : nil;
 }
@@ -2032,10 +2046,7 @@ static BOOL forwardingPressesToSDL = NO;
     NSLog(@"Input: Got mouse %@", mouse);
     mouse.mouseInput.mouseMovedHandler = ^(GCMouseInput * _Nonnull mouse, float deltaX, float deltaY) {
         if (self.pointerHidden != isGrabbing) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                self.pointerHidden = isGrabbing;
-                [self.pointerHideInteraction invalidate];
-            });
+            dispatch_async(dispatch_get_main_queue(), ^{ [self syncPointerHidden]; });
         }
         // Outside the game (menus) the hover gesture already reports the system
         // pointer's absolute position. Adding deltas on top makes the game cursor
@@ -2115,6 +2126,7 @@ static BOOL forwardingPressesToSDL = NO;
 }
 
 - (void)surfaceOnHover:(UIGestureRecognizer *)sender {
+    [self syncPointerHidden];
     if (isGrabbing) return;
     CGPoint point = [sender locationInView:self.rootView];
     switch (sender.state) {
