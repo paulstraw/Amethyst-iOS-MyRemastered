@@ -159,6 +159,23 @@ void Amethyst_SetSDLWindow(void *window) {
     NSLog(@"[InputDiag] Amethyst_SetSDLWindow: %p PushEvent=%p", window, (void*)pSDL_PushEvent);
 }
 
+// In menus SDL tracks its cursor from relative GCMouse motion, so on visionOS it
+// drifts away from the system pointer (e.g. when the pointer leaves the window
+// and re-enters elsewhere). Snap SDL's cursor to the pointer's absolute position.
+// x/y are SDL window coordinates (points).
+void CallbackBridge_warpSDLMouse(float x, float y) {
+    typedef void SDL_WarpMouseInWindow_func(void *window, float x, float y);
+    static SDL_WarpMouseInWindow_func *pWarp = NULL;
+    static BOOL resolved = NO;
+    if (!resolved) {
+        pWarp = dlsym(RTLD_DEFAULT, "SDL_WarpMouseInWindow");
+        resolved = YES;
+    }
+    if (pWarp && g_sdlWindow && !isGrabbing) {
+        pWarp(g_sdlWindow, x, y);
+    }
+}
+
 static SDL3_WindowID getSDLWindowID(void) {
     if (g_sdlWindow && pSDL_GetWindowID) {
         return pSDL_GetWindowID(g_sdlWindow);

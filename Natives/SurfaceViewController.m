@@ -2129,6 +2129,8 @@ static BOOL forwardingPressesToSDL = NO;
     [self syncPointerHidden];
     if (isGrabbing) return;
     CGPoint point = [sender locationInView:self.rootView];
+    CGPoint windowPoint = [sender locationInView:self.surfaceView];
+    CallbackBridge_warpSDLMouse(windowPoint.x, windowPoint.y);
     switch (sender.state) {
         case UIGestureRecognizerStateBegan:
             [self sendTouchPoint:point withEvent:ACTION_DOWN];
