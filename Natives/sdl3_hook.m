@@ -1176,6 +1176,48 @@ static ame_fn_SDL_GetWindowFlags ame_real_GetWindowFlags = NULL;
 static ame_fn_SDL_ShowWindow ame_real_ShowWindow = NULL;
 static int ame_eventRewriteLogBudget = 8;
 
+// visionOS 去重：Full Keyboard Access 关闭时，硬件键盘按键会同时经 SDL 自己的
+// GCKeyboard 处理器（which = 真实键盘 ID，修饰键正确）和 Air 输入桥的
+// pushSDLKeyboardEvent（which = 0，mod = 0）各送一次，MC 收到两次按下
+// （Esc 打开菜单又立刻关闭）。同一扫描码、同一按下/抬起状态、来自另一来源且
+// 相隔 100ms 内的第二条视为重复丢弃。屏幕控制按钮只走 which = 0，不受影响；
+// FKA 开启时 GCKeyboard 收不到按键，输入桥仍是唯一来源。
+// Air 输入桥会给每个 Ctrl 补发一个 Super（input_bridge_v3.m），按对应 Ctrl 匹配。
+#define AME_KEY_DEDUP_WINDOW_NS 100000000ULL
+typedef struct { uint32_t scancode; bool down; bool native; uint64_t ts; } ame_KeySeen;
+static ame_KeySeen ame_recentKeys[16];
+static int ame_recentKeyIdx = 0;
+
+static bool ame_eventIsDuplicateKey(const void *event) {
+    const uint8_t *e = (const uint8_t *)event;
+    uint32_t type = *(const uint32_t *)e;
+    if (type != 0x300 && type != 0x301) return false;          // KEY_DOWN / KEY_UP
+    if (e[37]) return false;                                    // repeat
+    uint64_t ts = *(const uint64_t *)(e + 8);
+    bool native = *(const uint32_t *)(e + 20) != 0;             // which
+    uint32_t scancode = *(const uint32_t *)(e + 24);
+    bool down = e[36];
+    uint32_t match = scancode;
+    if (!native && (scancode == 227 || scancode == 231)) match = scancode - 3;   // LGUI/RGUI -> LCTRL/RCTRL
+    for (int i = 0; i < 16; i++) {
+        ame_KeySeen *k = &ame_recentKeys[i];
+        if (k->ts == 0 || k->native == native || k->scancode != match || k->down != down) continue;
+        uint64_t dt = ts > k->ts ? ts - k->ts : k->ts - ts;
+        if (dt < AME_KEY_DEDUP_WINDOW_NS) {
+            static int logged = 0;
+            if (logged++ < 5) {
+                NSLog(@"[KeyDedup] dropped %s copy of scancode %u (%s), %llu us after the other",
+                      native ? "SDL GCKeyboard" : "input bridge", scancode, down ? "down" : "up",
+                      (unsigned long long)(dt / 1000));
+            }
+            return true;
+        }
+    }
+    ame_recentKeys[ame_recentKeyIdx] = (ame_KeySeen){ scancode, down, native, ts };
+    ame_recentKeyIdx = (ame_recentKeyIdx + 1) % 16;
+    return false;
+}
+
 static void ame_rewriteWindowSizeEvent(void *event) {
     if (event == NULL) return;
     ame_SDL_Event *ev = (ame_SDL_Event *)event;
@@ -1413,6 +1455,7 @@ static bool ame_SDL_PollEvent(void *event) {
             ame_noteDroppedMinimized();
             continue;
         }
+        if (ame_eventIsDuplicateKey(event)) continue;
         ame_rewriteWindowSizeEvent(event);
         return true;
     }
@@ -1430,6 +1473,7 @@ static bool ame_SDL_WaitEvent(void *event) {
             ame_noteDroppedMinimized();
             continue;
         }
+        if (ame_eventIsDuplicateKey(event)) continue;
         ame_rewriteWindowSizeEvent(event);
         return true;
     }
@@ -1448,6 +1492,7 @@ static bool ame_SDL_WaitEventTimeout(void *event, int32_t timeoutMS) {
             ame_noteDroppedMinimized();
             continue;
         }
+        if (ame_eventIsDuplicateKey(event)) continue;
         ame_rewriteWindowSizeEvent(event);
         return true;
     }
@@ -1473,6 +1518,7 @@ static int ame_SDL_PeepEvents(void *events, int numevents, int action,
                 ame_noteDroppedMinimized();
                 continue;
             }
+            if (ame_eventIsDuplicateKey(e)) continue;
             if (keep != i) memmove(base + (size_t)keep * 128, e, 128);
             ame_rewriteWindowSizeEvent(base + (size_t)keep * 128);
             keep++;
@@ -1495,6 +1541,7 @@ static bool ame_SDL_WaitEventTimeoutNS(void *event, int64_t timeoutNS) {
             ame_noteDroppedMinimized();
             continue;
         }
+        if (ame_eventIsDuplicateKey(event)) continue;
         ame_rewriteWindowSizeEvent(event);
         return true;
     }
