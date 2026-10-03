@@ -159,22 +159,6 @@ void Amethyst_SetSDLWindow(void *window) {
     NSLog(@"[InputDiag] Amethyst_SetSDLWindow: %p PushEvent=%p", window, (void*)pSDL_PushEvent);
 }
 
-// In menus SDL tracks its cursor from relative GCMouse motion, so on visionOS it
-// drifts away from the system pointer (e.g. when the pointer leaves the window
-// and re-enters elsewhere). Snap SDL's cursor to the pointer's absolute position.
-// x/y are SDL window coordinates (points).
-void CallbackBridge_warpSDLMouse(float x, float y) {
-    typedef void SDL_WarpMouseInWindow_func(void *window, float x, float y);
-    static SDL_WarpMouseInWindow_func *pWarp = NULL;
-    static BOOL resolved = NO;
-    if (!resolved) {
-        pWarp = dlsym(RTLD_DEFAULT, "SDL_WarpMouseInWindow");
-        resolved = YES;
-    }
-    if (pWarp && g_sdlWindow && !isGrabbing) {
-        pWarp(g_sdlWindow, x, y);
-    }
-}
 
 static SDL3_WindowID getSDLWindowID(void) {
     if (g_sdlWindow && pSDL_GetWindowID) {
@@ -308,7 +292,31 @@ static int ame82_utf8_encode(uint32_t cp, char out[8]) {
 
 // Push a text input event into SDL's event queue (one UTF-16 code unit,
 // surrogate halves are merged into a single codepoint)
+// On visionOS a plain Space never arrives as a key press: it only shows up here
+// as typed text. While the game has the mouse grabbed (gameplay, not chat or a
+// text box), turn it into GLFW_KEY_SPACE. Text gives no key-up, so hold the key
+// briefly (longer than a 50 ms game tick) and keep it held while key repeat
+// keeps delivering spaces.
+static void ame_spaceFromText(void) {
+    static BOOL spaceDown = NO;
+    static uint64_t generation = 0;
+    uint64_t mine = ++generation;
+    if (!spaceDown) {
+        spaceDown = YES;
+        CallbackBridge_nativeSendKey(GLFW_KEY_SPACE, 0, 1, 0);
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        if (mine != generation || !spaceDown) return;
+        spaceDown = NO;
+        CallbackBridge_nativeSendKey(GLFW_KEY_SPACE, 0, 0, 0);
+    });
+}
+
 static void pushSDLTextInput(jchar codepoint) {
+    if (codepoint == ' ' && isGrabbing) {
+        dispatch_async(dispatch_get_main_queue(), ^{ ame_spaceFromText(); });
+        return;
+    }
     if (!pSDL_PushEvent || !g_sdlWindow) return;
 
     uint32_t cp;

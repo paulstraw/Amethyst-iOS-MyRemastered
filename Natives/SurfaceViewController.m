@@ -302,6 +302,8 @@ static GameSurfaceView* pojavWindow;
 // stays visible and drifts independently of the camera.
 @property(nonatomic, strong) UIPointerInteraction *pointerHideInteraction;
 @property(nonatomic, assign) BOOL pointerHidden;
+// Menu cursor in surface points, driven by raw mouse deltas (see ame_wrapMouseHandlers).
+@property(nonatomic, assign) CGPoint menuCursor;
 @property(nonatomic, strong) CAGradientLayer *launchGradientLayer;
 @property(nonatomic, strong) UIActivityIndicatorView *launchSpinner;
 @property(nonatomic, strong) UILabel *launchTitleLabel;
@@ -316,6 +318,9 @@ static GameSurfaceView* pojavWindow;
 // avoids an implicit-declaration warning when pressesBegan/pressesEnded
 // forward physical keyboard events to the embedded SDL_uikitview.
 static UIView *findSDL_uikitview(UIView *root);
+
+static char kAmeMenuMouseWrapper;
+static char kAmeSpaceKeyWrapper;
 
 @implementation SurfaceViewController
 
@@ -927,6 +932,14 @@ static UIView *findSDL_uikitview(UIView *root);
 
 - (void)viewDidLoad
 {
+    [self ame_wrapKeyboardHandler];
+    [[NSNotificationCenter defaultCenter] addObserverForName:GCKeyboardDidConnectNotification object:nil
+        queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+        // SDL may install its own handler on connect; wrap after it.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 2), dispatch_get_main_queue(), ^{
+            [self ame_wrapKeyboardHandler];
+        });
+    }];
     [super viewDidLoad];
     isControlModifiable = NO;
     self.isMacCatalystApp = NSProcessInfo.processInfo.isMacCatalystApp;
@@ -2036,11 +2049,97 @@ static NSSet<UIPress *> *ame_dedupePresses(NSSet<UIPress *> *presses, BOOL down)
     [super pressesEnded:presses withEvent:event];
 }
 
+// visionOS consumes a plain Space before it reaches the app as a UIPress (only
+// Ctrl+Space got through), so Minecraft could not jump. GCKeyboard still sees
+// every key: take Space from there, chaining any handler SDL installed, and
+// ignore Space presses from UIKit so it is never delivered twice.
+- (void)ame_wrapKeyboardHandler {
+    GCKeyboardInput *input = GCKeyboard.coalescedKeyboard.keyboardInput;
+    if (input == nil) return;
+    GCKeyboardValueChangedHandler inner = input.keyChangedHandler;
+    if (inner && objc_getAssociatedObject(inner, &kAmeSpaceKeyWrapper)) return;
+    GCKeyboardValueChangedHandler wrapper = ^(GCKeyboardInput *keyboard, GCControllerButtonInput *key, GCKeyCode keyCode, BOOL pressed) {
+        static int keyLogCount = 0;
+        if (++keyLogCount <= 40 || keyCode == GCKeyCodeSpacebar) {
+            NSLog(@"[KeyDiag] GCKeyboard keyCode=%ld pressed=%d main=%d", (long)keyCode, pressed, NSThread.isMainThread);
+        }
+        if (inner) inner(keyboard, key, keyCode, pressed);
+    };
+    objc_setAssociatedObject(wrapper, &kAmeSpaceKeyWrapper, @YES, OBJC_ASSOCIATION_RETAIN);
+    input.keyChangedHandler = wrapper;
+    NSLog(@"[KeyDiag] wrapped GCKeyboard handler (inner=%p)", (__bridge void *)inner);
+}
+
+static BOOL ame_isSpacePress(UIPress *press) {
+    return press.key.keyCode == UIKeyboardHIDUsageKeyboardSpacebar && GCKeyboard.coalescedKeyboard != nil;
+}
+
+// SDL installs its own GCMouse handlers (replacing ours) and only reports motion
+// in relative mode. Wrap whatever handler is installed so menus also get raw
+// deltas, which keep flowing even where the window-confined pointer stops.
+- (void)ame_wrapMouseHandlers {
+    [self ame_wrapKeyboardHandler];
+    for (GCMouse *mouse in GCMouse.mice) {
+        GCMouseMoved inner = mouse.mouseInput.mouseMovedHandler;
+        if (inner && objc_getAssociatedObject(inner, &kAmeMenuMouseWrapper)) continue;
+        __weak SurfaceViewController *weakSelf = self;
+        GCMouseMoved wrapper = ^(GCMouseInput *input, float deltaX, float deltaY) {
+            if (inner) inner(input, deltaX, deltaY);
+            if (isGrabbing) return;
+            // GCMouse handlers can run off the main thread; the drawn pointer
+            // view only updates on screen when moved from the main thread.
+            if (NSThread.isMainThread) {
+                [weakSelf ame_moveMenuCursorByX:deltaX y:-deltaY];
+            } else {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [weakSelf ame_moveMenuCursorByX:deltaX y:-deltaY];
+                });
+            }
+        };
+        objc_setAssociatedObject(wrapper, &kAmeMenuMouseWrapper, @YES, OBJC_ASSOCIATION_RETAIN);
+        mouse.mouseInput.mouseMovedHandler = wrapper;
+        NSLog(@"[InputDiag] wrapped GCMouse moved handler (inner=%p)", (__bridge void *)inner);
+    }
+}
+
+- (void)ame_moveMenuCursorByX:(float)deltaX y:(float)deltaY {
+    static int menuMoveCount = 0;
+    if (++menuMoveCount <= 5 || menuMoveCount % 200 == 0) {
+        NSLog(@"[CursorDiag] menu move #%d main=%d d=(%.1f,%.1f) virtualMouse=%d pointerViewHidden=%d pointerView=%@ superview=%@ locked=%d",
+            menuMoveCount, NSThread.isMainThread, deltaX, deltaY, virtualMouseEnabled, self.mousePointerView.hidden,
+            NSStringFromCGRect(self.mousePointerView.frame), NSStringFromClass(self.mousePointerView.superview.class),
+            self.prefersPointerLocked);
+    }
+    if (virtualMouseEnabled) {
+        // Air's drawn virtual-mouse pointer is the cursor the player sees.
+        [self sendTouchPoint:CGPointMake(deltaX, deltaY) withEvent:ACTION_MOVE_MOTION];
+        return;
+    }
+    CGSize size = self.surfaceView.bounds.size;
+    if (CGPointEqualToPoint(self.menuCursor, CGPointZero)) {
+        self.menuCursor = CGPointMake(size.width / 2, size.height / 2);
+    }
+    CGFloat speed = self.mouseSpeed > 0 ? self.mouseSpeed : 1;
+    self.menuCursor = CGPointMake(clamp(self.menuCursor.x + deltaX * speed, 0, size.width),
+                                  clamp(self.menuCursor.y + deltaY * speed, 0, size.height));
+    CGFloat scale = self.surfaceView.layer.contentsScale;
+    CallbackBridge_nativeSendCursorPos(ACTION_MOVE, self.menuCursor.x * scale, self.menuCursor.y * scale);
+}
+
 // Re-query the pointer style whenever the grab state has changed since the
 // last time it was applied. Called from hover, raw mouse movement, and
 // pointer-lock updates so the hidden state follows grabbing promptly.
 - (void)syncPointerHidden {
     if (self.pointerHidden == isGrabbing) return;
+    [self ame_wrapMouseHandlers];
+    if (self.pointerHidden && !isGrabbing) {
+        // Minecraft centres its cursor when it releases the mouse.
+        self.menuCursor = CGPointMake(CGRectGetMidX(self.surfaceView.bounds), CGRectGetMidY(self.surfaceView.bounds));
+        if (virtualMouseEnabled) {
+            virtualMouseFrame.origin = self.menuCursor;
+            self.mousePointerView.frame = virtualMouseFrame;
+        }
+    }
     self.pointerHidden = isGrabbing;
     [self.pointerHideInteraction invalidate];
 }
@@ -2050,8 +2149,10 @@ static NSSet<UIPress *> *ame_dedupePresses(NSSet<UIPress *> *presses, BOOL down)
     [self syncPointerHidden];
 }
 
+// Minecraft draws its own cursor, and on visionOS the system pointer is not
+// kept in sync with the app's (window-confined) pointer, so show only the game's.
 - (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction styleForRegion:(UIPointerRegion *)region {
-    return isGrabbing ? [UIPointerStyle hiddenPointerStyle] : nil;
+    return [UIPointerStyle hiddenPointerStyle];
 }
 
 // With a hardware keyboard, the focus engine can land on the in-game menu
@@ -2155,10 +2256,21 @@ static NSSet<UIPress *> *ame_dedupePresses(NSSet<UIPress *> *presses, BOOL down)
 
 - (void)surfaceOnHover:(UIGestureRecognizer *)sender {
     [self syncPointerHidden];
+    static int hoverCount = 0;
+    if (++hoverCount <= 5 || hoverCount % 200 == 0) {
+        NSLog(@"[CursorDiag] hover #%d state=%ld at=%@ grabbing=%d virtualMouse=%d",
+            hoverCount, (long)sender.state, NSStringFromCGPoint([sender locationInView:self.rootView]),
+            isGrabbing, virtualMouseEnabled);
+    }
     if (isGrabbing) return;
+    // With a hardware mouse the app's pointer is confined to the window and is
+    // not kept in sync with the visionOS pointer, so its position cannot reach
+    // every edge. Drive the menu cursor from raw deltas instead.
+    if (GCMouse.mice.count > 0) {
+        [self ame_wrapMouseHandlers];
+        return;
+    }
     CGPoint point = [sender locationInView:self.rootView];
-    CGPoint windowPoint = [sender locationInView:self.surfaceView];
-    CallbackBridge_warpSDLMouse(windowPoint.x, windowPoint.y);
     switch (sender.state) {
         case UIGestureRecognizerStateBegan:
             [self sendTouchPoint:point withEvent:ACTION_DOWN];
