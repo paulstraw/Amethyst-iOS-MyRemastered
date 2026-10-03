@@ -35,33 +35,6 @@ static uint64_t ame156_mach_ms(void) {
 
 @implementation TrackedTextField
 
-// A plain Space is consumed here as text input and never reaches
-// SurfaceViewController as a key press, so Minecraft never sees GLFW_KEY_SPACE
-// (jumping only worked with Ctrl held). Forward Space presses up the responder
-// chain as well; the text is still inserted for chat.
-static NSSet<UIPress *> *ame_spacePresses(NSSet<UIPress *> *presses) {
-    return [presses objectsPassingTest:^BOOL(UIPress *press, BOOL *stop) {
-        return press.key.keyCode == UIKeyboardHIDUsageKeyboardSpacebar;
-    }];
-}
-
-- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
-    NSSet *space = ame_spacePresses(presses);
-    if (space.count > 0) [self.nextResponder pressesBegan:space withEvent:event];
-    [super pressesBegan:presses withEvent:event];
-}
-
-- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
-    NSSet *space = ame_spacePresses(presses);
-    if (space.count > 0) [self.nextResponder pressesEnded:space withEvent:event];
-    [super pressesEnded:presses withEvent:event];
-}
-
-- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
-    NSSet *space = ame_spacePresses(presses);
-    if (space.count > 0) [self.nextResponder pressesEnded:space withEvent:event];
-    [super pressesCancelled:presses withEvent:event];
-}
 
 - (BOOL)resignFirstResponder {
     // SDL 的 text-input 更新、IME 候选确定等带来的临时 resign 要求：

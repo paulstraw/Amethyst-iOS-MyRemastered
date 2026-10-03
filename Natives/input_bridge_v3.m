@@ -292,31 +292,7 @@ static int ame82_utf8_encode(uint32_t cp, char out[8]) {
 
 // Push a text input event into SDL's event queue (one UTF-16 code unit,
 // surrogate halves are merged into a single codepoint)
-// On visionOS a plain Space never arrives as a key press: it only shows up here
-// as typed text. While the game has the mouse grabbed (gameplay, not chat or a
-// text box), turn it into GLFW_KEY_SPACE. Text gives no key-up, so hold the key
-// briefly (longer than a 50 ms game tick) and keep it held while key repeat
-// keeps delivering spaces.
-static void ame_spaceFromText(void) {
-    static BOOL spaceDown = NO;
-    static uint64_t generation = 0;
-    uint64_t mine = ++generation;
-    if (!spaceDown) {
-        spaceDown = YES;
-        CallbackBridge_nativeSendKey(GLFW_KEY_SPACE, 0, 1, 0);
-    }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        if (mine != generation || !spaceDown) return;
-        spaceDown = NO;
-        CallbackBridge_nativeSendKey(GLFW_KEY_SPACE, 0, 0, 0);
-    });
-}
-
 static void pushSDLTextInput(jchar codepoint) {
-    if (codepoint == ' ' && isGrabbing) {
-        dispatch_async(dispatch_get_main_queue(), ^{ ame_spaceFromText(); });
-        return;
-    }
     if (!pSDL_PushEvent || !g_sdlWindow) return;
 
     uint32_t cp;

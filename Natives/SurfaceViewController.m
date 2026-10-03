@@ -319,8 +319,34 @@ static GameSurfaceView* pojavWindow;
 // forward physical keyboard events to the embedded SDL_uikitview.
 static UIView *findSDL_uikitview(UIView *root);
 
+// Finds the current first responder (used to keep SDL's text field from holding focus).
+static __weak UIResponder *ame_foundFirstResponder;
+@implementation UIResponder (AmeFirstResponder)
+- (void)ame_reportFirstResponder:(id)sender { ame_foundFirstResponder = self; }
+@end
+
+static UIResponder *ame_currentFirstResponder(void) {
+    ame_foundFirstResponder = nil;
+    [UIApplication.sharedApplication sendAction:@selector(ame_reportFirstResponder:) to:nil from:nil forEvent:nil];
+    return ame_foundFirstResponder;
+}
+
 static char kAmeMenuMouseWrapper;
-static char kAmeSpaceKeyWrapper;
+// SDL keeps its own hidden UITextField as first responder while text input is
+// on. It inserts typed letters itself (auto-capitalized, so chat got "aA"),
+// swallows a plain Space entirely (so Space never reached the game; only
+// Ctrl+Space, which is not text, passed through), and passes letter presses on
+// up the chain, where KeyboardInput delivers them again. KeyboardInput already
+// delivers every key and character, so keep SDL's text field from holding focus.
+static void ame_resignSDLTextField(UIResponder *responder) {
+    if (![responder isKindOfClass:UITextField.class]) return;
+    if (![NSStringFromClass(responder.class) containsString:@"SDL"]) return;
+    BOOL resigned = [responder resignFirstResponder];
+    static int count = 0;
+    if (++count <= 20) {
+        NSLog(@"[InputDiag] resigned SDL text field %@ -> %d", NSStringFromClass(responder.class), resigned);
+    }
+}
 
 @implementation SurfaceViewController
 
@@ -932,14 +958,10 @@ static char kAmeSpaceKeyWrapper;
 
 - (void)viewDidLoad
 {
-    [self ame_wrapKeyboardHandler];
-    [[NSNotificationCenter defaultCenter] addObserverForName:GCKeyboardDidConnectNotification object:nil
-        queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
-        // SDL may install its own handler on connect; wrap after it.
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 2), dispatch_get_main_queue(), ^{
-            [self ame_wrapKeyboardHandler];
-        });
-    }];
+    CADisplayLink *ameFocusCheck = [CADisplayLink displayLinkWithTarget:self selector:@selector(ame_checkKeyboardFocus)];
+    ameFocusCheck.preferredFramesPerSecond = 10;
+    [ameFocusCheck addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+
     [super viewDidLoad];
     isControlModifiable = NO;
     self.isMacCatalystApp = NSProcessInfo.processInfo.isMacCatalystApp;
@@ -2016,13 +2038,9 @@ static NSSet<UIPress *> *ame_dedupePresses(NSSet<UIPress *> *presses, BOOL down)
             [KeyboardInput sendKeyEvent:press.key down:YES];
         }
     }
-    // Forward to SDL view for MC 26.3 (SDL3 input)
-    UIView *sdlView = findSDL_uikitview(self.view);
-    if (sdlView) {
-        forwardingPressesToSDL = YES;
-        [sdlView pressesBegan:presses withEvent:event];
-        forwardingPressesToSDL = NO;
-    }
+    // Not forwarded to SDL_uikitview: KeyboardInput already delivers the key and
+    // its character to SDL, so forwarding made every keystroke arrive twice, and
+    // SDL passes unconsumed presses back up to us (infinite recursion in chat).
     // Always call super so that inputTextField (UITextInput) can receive
     // key events for text input (e.g., Minecraft chat).
     [super pressesBegan:presses withEvent:event];
@@ -2037,48 +2055,22 @@ static NSSet<UIPress *> *ame_dedupePresses(NSSet<UIPress *> *presses, BOOL down)
             [KeyboardInput sendKeyEvent:press.key down:NO];
         }
     }
-    // Forward to SDL view for MC 26.3 (SDL3 input)
-    UIView *sdlView = findSDL_uikitview(self.view);
-    if (sdlView) {
-        forwardingPressesToSDL = YES;
-        [sdlView pressesEnded:presses withEvent:event];
-        forwardingPressesToSDL = NO;
-    }
+    // Not forwarded to SDL_uikitview: KeyboardInput already delivers the key and
+    // its character to SDL, so forwarding made every keystroke arrive twice, and
+    // SDL passes unconsumed presses back up to us (infinite recursion in chat).
     // Always call super so that inputTextField (UITextInput) can receive
     // key-up events properly.
     [super pressesEnded:presses withEvent:event];
 }
 
-// visionOS consumes a plain Space before it reaches the app as a UIPress (only
-// Ctrl+Space got through), so Minecraft could not jump. GCKeyboard still sees
-// every key: take Space from there, chaining any handler SDL installed, and
-// ignore Space presses from UIKit so it is never delivered twice.
-- (void)ame_wrapKeyboardHandler {
-    GCKeyboardInput *input = GCKeyboard.coalescedKeyboard.keyboardInput;
-    if (input == nil) return;
-    GCKeyboardValueChangedHandler inner = input.keyChangedHandler;
-    if (inner && objc_getAssociatedObject(inner, &kAmeSpaceKeyWrapper)) return;
-    GCKeyboardValueChangedHandler wrapper = ^(GCKeyboardInput *keyboard, GCControllerButtonInput *key, GCKeyCode keyCode, BOOL pressed) {
-        static int keyLogCount = 0;
-        if (++keyLogCount <= 40 || keyCode == GCKeyCodeSpacebar) {
-            NSLog(@"[KeyDiag] GCKeyboard keyCode=%ld pressed=%d main=%d", (long)keyCode, pressed, NSThread.isMainThread);
-        }
-        if (inner) inner(keyboard, key, keyCode, pressed);
-    };
-    objc_setAssociatedObject(wrapper, &kAmeSpaceKeyWrapper, @YES, OBJC_ASSOCIATION_RETAIN);
-    input.keyChangedHandler = wrapper;
-    NSLog(@"[KeyDiag] wrapped GCKeyboard handler (inner=%p)", (__bridge void *)inner);
-}
-
-static BOOL ame_isSpacePress(UIPress *press) {
-    return press.key.keyCode == UIKeyboardHIDUsageKeyboardSpacebar && GCKeyboard.coalescedKeyboard != nil;
+- (void)ame_checkKeyboardFocus {
+    ame_resignSDLTextField(ame_currentFirstResponder());
 }
 
 // SDL installs its own GCMouse handlers (replacing ours) and only reports motion
 // in relative mode. Wrap whatever handler is installed so menus also get raw
 // deltas, which keep flowing even where the window-confined pointer stops.
 - (void)ame_wrapMouseHandlers {
-    [self ame_wrapKeyboardHandler];
     for (GCMouse *mouse in GCMouse.mice) {
         GCMouseMoved inner = mouse.mouseInput.mouseMovedHandler;
         if (inner && objc_getAssociatedObject(inner, &kAmeMenuMouseWrapper)) continue;
@@ -2103,13 +2095,6 @@ static BOOL ame_isSpacePress(UIPress *press) {
 }
 
 - (void)ame_moveMenuCursorByX:(float)deltaX y:(float)deltaY {
-    static int menuMoveCount = 0;
-    if (++menuMoveCount <= 5 || menuMoveCount % 200 == 0) {
-        NSLog(@"[CursorDiag] menu move #%d main=%d d=(%.1f,%.1f) virtualMouse=%d pointerViewHidden=%d pointerView=%@ superview=%@ locked=%d",
-            menuMoveCount, NSThread.isMainThread, deltaX, deltaY, virtualMouseEnabled, self.mousePointerView.hidden,
-            NSStringFromCGRect(self.mousePointerView.frame), NSStringFromClass(self.mousePointerView.superview.class),
-            self.prefersPointerLocked);
-    }
     if (virtualMouseEnabled) {
         // Air's drawn virtual-mouse pointer is the cursor the player sees.
         [self sendTouchPoint:CGPointMake(deltaX, deltaY) withEvent:ACTION_MOVE_MOTION];
@@ -2256,12 +2241,6 @@ static BOOL ame_isSpacePress(UIPress *press) {
 
 - (void)surfaceOnHover:(UIGestureRecognizer *)sender {
     [self syncPointerHidden];
-    static int hoverCount = 0;
-    if (++hoverCount <= 5 || hoverCount % 200 == 0) {
-        NSLog(@"[CursorDiag] hover #%d state=%ld at=%@ grabbing=%d virtualMouse=%d",
-            hoverCount, (long)sender.state, NSStringFromCGPoint([sender locationInView:self.rootView]),
-            isGrabbing, virtualMouseEnabled);
-    }
     if (isGrabbing) return;
     // With a hardware mouse the app's pointer is confined to the window and is
     // not kept in sync with the visionOS pointer, so its position cannot reach
